@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CypherNode UI</title>
+<style>
+
+:root{
+ --bg:#0f172a;
+ --card:#111827;
+ --soft:#1f2937;
+ --accent:#6366f1;
+ --accent2:#8b5cf6;
+ --text:#e5e7eb;
+ --muted:#9ca3af;
+ --danger:#ef4444;
+ --radius:16px;
+ --shadow:0 10px 30px rgba(0,0,0,.35);
+ --max-width:1200px;
+ font-family:Inter,system-ui,sans-serif;
+}
+
+*{box-sizing:border-box}
+
+body{
+ margin:0;
+ min-height:100vh;
+ background: radial-gradient(circle at top,#1e293b,#020617);
+ color:var(--text);
+ display:flex;
+ justify-content:center;
+ padding:30px;
+}
+
+.app{
+ width:100%;
+ max-width:var(--max-width);
+ display:grid;
+ grid-template-columns:300px 1fr;
+ gap:20px;
+}
+
+@media(max-width:900px){
+ .app{grid-template-columns:1fr}
+}
+
+.sidebar{
+ background:linear-gradient(180deg,#111827,#020617);
+ border-radius:var(--radius);
+ padding:20px;
+ display:flex;
+ flex-direction:column;
+ gap:16px;
+ box-shadow:var(--shadow);
+ border:1px solid rgba(255,255,255,.05);
+}
+
+.brand{
+ display:flex;
+ align-items:center;
+ gap:12px;
+}
+
+.logo{
+ width:44px;
+ height:44px;
+ border-radius:12px;
+ background:linear-gradient(135deg,var(--accent),var(--accent2));
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ font-weight:700;
+}
+
+.brand h1{
+ margin:0;
+ font-size:17px;
+}
+
+.brand p{
+ margin:0;
+ font-size:12px;
+ color:var(--muted);
+}
+
+.nav{
+ display:flex;
+ gap:8px;
+}
+
+.nav button{
+ flex:1;
+ padding:10px;
+ border:none;
+ border-radius:10px;
+ background:var(--soft);
+ color:var(--muted);
+ font-weight:600;
+ cursor:pointer;
+ transition:.2s;
+}
+
+.nav button:hover{
+ background:#374151;
+ color:white;
+}
+
+.nav button.active{
+ background:linear-gradient(90deg,var(--accent),var(--accent2));
+ color:white;
+}
+
+.stat-row{
+ display:flex;
+ gap:10px;
+}
+
+.stat{
+ flex:1;
+ padding:14px;
+ border-radius:12px;
+ text-align:center;
+ background:#020617;
+ border:1px solid rgba(255,255,255,.05);
+}
+
+.stat small{
+ color:var(--muted);
+ font-size:12px;
+}
+
+.stat strong{
+ display:block;
+ font-size:22px;
+ margin-top:4px;
+}
+
+.main{
+ display:flex;
+ flex-direction:column;
+ gap:18px;
+}
+
+.panel{
+ background:linear-gradient(180deg,#111827,#020617);
+ border-radius:var(--radius);
+ padding:18px;
+ box-shadow:var(--shadow);
+ border:1px solid rgba(255,255,255,.05);
+}
+
+.panel h2{
+ margin:0 0 12px;
+}
+
+.controls{
+ display:flex;
+ gap:10px;
+ flex-wrap:wrap;
+ align-items:center;
+}
+
+.devices{
+ display:grid;
+ grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+ gap:14px;
+ margin-top:12px;
+}
+
+.device{
+ border-radius:16px;
+ padding:16px;
+ background:linear-gradient(160deg,#1f2937,#020617);
+ border:1px solid rgba(255,255,255,.05);
+ transition:.2s;
+ display:flex;
+ flex-direction:column;
+ gap:10px;
+}
+
+.device:hover{
+ transform:translateY(-4px);
+ box-shadow:0 10px 25px rgba(0,0,0,.5);
+}
+
+.pi{
+ font-weight:700;
+ font-size:15px;
+}
+
+.meta{
+ color:var(--muted);
+ font-size:13px;
+}
+
+.actions{
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+ margin-top:6px;
+}
+
+.btn{
+ padding:9px 14px;
+ border-radius:10px;
+ border:none;
+ cursor:pointer;
+ font-weight:600;
+ background:linear-gradient(90deg,var(--accent),var(--accent2));
+ color:white;
+}
+
+.btn:hover{
+ opacity:.9;
+}
+
+.btn.ghost{
+ background:transparent;
+ border:1px solid rgba(255,255,255,.15);
+ color:var(--text);
+}
+
+.btn.danger{
+ background:var(--danger);
+}
+
+input[type="text"],select{
+ width:100%;
+ padding:10px;
+ border-radius:10px;
+ border:1px solid rgba(255,255,255,.1);
+ background:#020617;
+ color:white;
+}
+
+label{
+ font-size:13px;
+ color:var(--muted);
+}
+
+.form-row{
+ display:flex;
+ gap:10px;
+}
+
+.col{flex:1}
+
+.switch{
+ --w:48px;
+ --h:26px;
+ position:relative;
+ width:var(--w);
+ height:var(--h);
+}
+
+.switch input{
+ opacity:0;
+ width:0;
+ height:0;
+}
+
+.switch .track{
+ position:absolute;
+ inset:0;
+ background:#374151;
+ border-radius:999px;
+ padding:3px;
+ transition:.2s;
+}
+
+.switch .thumb{
+ width:20px;
+ height:20px;
+ border-radius:50%;
+ background:white;
+ transition:.2s;
+}
+
+.switch input:checked + .track{
+ background:linear-gradient(90deg,var(--accent),var(--accent2));
+}
+
+.switch input:checked + .track .thumb{
+ transform:translateX(22px);
+}
+
+.toast{
+ position:fixed;
+ bottom:25px;
+ left:50%;
+ transform:translateX(-50%);
+ background:#020617;
+ padding:12px 16px;
+ border-radius:10px;
+ display:none;
+}
+
+.toast.show{
+ display:block;
+}
+
+.empty{
+ text-align:center;
+ padding:30px;
+ color:var(--muted);
+}
+
+</style>
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">CN</div><div><h1>CypherNode</h1><p>Smart Home</p></div></div>
+      <div class="nav">
+        <button id="tab-dashboard" class="active">Dashboard</button>
+        <button id="tab-config">Settings</button>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><small>Total Loads</small><strong id="stat-count">0</strong></div>
+        <div class="stat"><small>Online</small><strong id="stat-online">0 ON</strong></div>
+      </div>
+      <div class="small">Polling: <span id="polling-status">active</span></div>
+    </aside>
+
+    <main class="main">
+      <section id="panel-dashboard" class="panel">
+        <h2>My Devices</h2>
+        <div class="controls">
+          <button id="btn-refresh" class="btn ghost">Refresh</button>
+          <div style="flex:1"></div>
+          <div class="small muted">Last update: <span id="last-updated">...</span></div>
+        </div>
+        <div id="devices-wrap" class="devices"><div class="empty">Loading devices...</div></div>
+      </section>
+
+      <section id="panel-config" class="panel" style="display:none">
+        <h2>Configuration</h2>
+        <div id="config-list" style="margin-bottom:12px"></div>
+        <div style="border-radius:12px;padding:12px;background:var(--glass-2); display:flex; flex-direction:column; gap:12px;">
+          <strong>Add / Update Load</strong>
+          <div class="form-row">
+            <div class="col"><label>Load ID (Unique)</label><input id="new-id" type="text" placeholder="e.g., room1"></div>
+            <div class="col"><label>Display Name</label><input id="new-name" type="text" placeholder="e.g., Bedroom Light"></div>
+          </div>
+          <div class="form-row">
+            <div class="col" style="flex: 1 1 100%;">
+              <label>Device Type (Icon)</label>
+              <select id="new-type">
+                <option value="light">💡 Light / Bulb</option>
+                <option value="fan">🌀 Fan / Ceiling Fan</option>
+                <option value="ac">❄️ Air Conditioner</option>
+                <option value="tv">📺 TV / Entertainment</option>
+                <option value="socket">🔌 Smart Plug</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="col"><label>Relay GPIO</label><select id="new-relay"></select></div>
+            <div class="col">
+              <label style="display:flex;align-items:center;gap:8px"><input id="new-has-switch" type="checkbox"> Has Physical Switch</label>
+              <select id="new-switch" disabled><option value="">Select PIN</option></select>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="btn-add" class="btn">Add & Save</button>
+            <button id="btn-clear" class="btn ghost">Clear</button>
+          </div>
+          <div id="form-error" class="hint" style="display:none"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let currentConfig = [];
+    let stateMap = {};
+    let pollInterval = null;
+    const POLL_MS = 1500;
+
+    const availableRelayPins = [2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33];
+    const availableSwitchPins = [2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33, 34, 35, 36, 39];
+
+    const $ = (s)=> document.querySelector(s);
+    const $all = (s)=> Array.from(document.querySelectorAll(s));
+    const toast = (msg) => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=> t.classList.remove('show'), 2600); }
+
+    const elId=$('#new-id'), elName=$('#new-name'), elType=$('#new-type'), elRelay=$('#new-relay'), elHasSwitch=$('#new-has-switch'), elSwitch=$('#new-switch');
+    
+    function initPins(){
+      availableRelayPins.forEach(p=> elRelay.insertAdjacentHTML('beforeend', `<option value="${p}">GPIO ${p}</option>`));
+      availableSwitchPins.forEach(p=> elSwitch.insertAdjacentHTML('beforeend', `<option value="${p}">GPIO ${p}</option>`));
+    }
+    initPins();
+
+    elHasSwitch.addEventListener('change', ()=> { elSwitch.disabled = !elHasSwitch.checked; if(!elHasSwitch.checked) elSwitch.value = ''; });
+
+    function showTab(tab){
+      if(tab === 'dashboard'){ 
+          $('#panel-dashboard').style.display=''; $('#panel-config').style.display='none'; 
+          $('#tab-dashboard').classList.add('active'); $('#tab-config').classList.remove('active'); 
+          startPolling(); 
+      } else { 
+          $('#panel-dashboard').style.display='none'; $('#panel-config').style.display=''; 
+          $('#tab-dashboard').classList.remove('active'); $('#tab-config').classList.add('active'); 
+          stopPolling(); 
+      }
+    }
+    $('#tab-dashboard').addEventListener('click', ()=> showTab('dashboard')); 
+    $('#tab-config').addEventListener('click', ()=> showTab('config'));
+
+    async function loadConfig(){
+      try{ 
+          const res = await fetch('/get-config'); 
+          if(res.ok) {
+              const data = await res.json();
+              currentConfig = Array.isArray(data) ? data : [];
+          }
+      }catch(e){ currentConfig = []; }
+      
+      renderConfigList(); 
+      renderDevices(); 
+      $('#stat-count').textContent = currentConfig.length;
+    }
+
+    function renderConfigList(){
+      const cl = $('#config-list'); cl.innerHTML = '';
+      if(currentConfig.length === 0) return cl.innerHTML = '<div class="empty">No loads configured.</div>';
+      
+      currentConfig.forEach((d, idx)=>{
+        const typeIcon = {light:'💡',fan:'🌀',ac:'❄️',tv:'📺',socket:'🔌'}[d.loadType] || '💡';
+        const card = document.createElement('div'); card.className = 'panel'; card.style.marginBottom = '8px'; card.style.padding = '12px';
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong>${typeIcon} ${escapeHtml(d.loadName)}</strong> <span class="muted">(${escapeHtml(d.loadID)})</span><br>
+              <span class="muted" style="font-size:12px">Relay: GPIO ${d.loadGPIO} | Switch: ${d.hasPhysicalSwitch?d.switchGPIO:'None'}</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn ghost" onclick="editLoad(${idx})">Edit</button> 
+              <button class="btn danger" onclick="deleteLoad(${idx})">Delete</button>
+            </div>
+          </div>`;
+        cl.appendChild(card);
+      });
+    }
+
+    window.editLoad = (idx) => {
+      const d = currentConfig[idx]; 
+      elId.value = d.loadID; elId.disabled = true; 
+      elName.value = d.loadName; elType.value = d.loadType || 'light'; 
+      elRelay.value = d.loadGPIO;
+      
+      if(d.hasPhysicalSwitch){ 
+          elHasSwitch.checked = true; elSwitch.disabled = false; elSwitch.value = d.switchGPIO; 
+      } else { 
+          elHasSwitch.checked = false; elSwitch.disabled = true; elSwitch.value = ''; 
+      }
+      
+      $('#btn-add').textContent = 'Update & Save'; 
+      $('#btn-add').dataset.editIdx = idx; 
+      showTab('config');
+    };
+
+    $('#btn-clear').addEventListener('click', resetForm);
+    function resetForm(){ 
+        elId.value=''; elId.disabled=false; elName.value=''; elType.value='light'; 
+        elRelay.value = availableRelayPins[0];
+        elHasSwitch.checked=false; elSwitch.disabled=true; elSwitch.value=''; 
+        $('#btn-add').textContent='Add & Save'; delete $('#btn-add').dataset.editIdx; 
+        $('#form-error').style.display='none'; 
+    }
+
+    $('#btn-add').addEventListener('click', async ()=>{
+      $('#form-error').style.display='none';
+      const id = elId.value.trim(), name = elName.value.trim(), type = elType.value, relay = parseInt(elRelay.value);
+      const hasSw = elHasSwitch.checked, swPin = hasSw ? parseInt(elSwitch.value) : null;
+      
+      if(!id || !name) return showErr('ID & Name are required'); 
+      if(hasSw && isNaN(swPin)) return showErr('Select a Switch PIN'); 
+      if(hasSw && swPin===relay) return showErr('Relay and Switch pins must be different');
+      
+      const eIdx = $('#btn-add').dataset.editIdx !== undefined ? +$('#btn-add').dataset.editIdx : -1;
+      if(currentConfig.some((c, i)=> c.loadID === id && i !== eIdx)) return showErr('Load ID must be unique');
+      
+      const isUsed = (pin) => currentConfig.some((c, i) => i !== eIdx && (c.loadGPIO === pin || (c.hasPhysicalSwitch && c.switchGPIO === pin)));
+      if(isUsed(relay)) return showErr(`GPIO ${relay} is already in use`); 
+      if(hasSw && isUsed(swPin)) return showErr(`GPIO ${swPin} is already in use`);
+
+      const entry = { loadID: id, loadName: name, loadType: type, loadGPIO: relay, hasPhysicalSwitch: hasSw, switchGPIO: hasSw?swPin:-1 };
+      if(eIdx >= 0) currentConfig[eIdx] = entry; else currentConfig.push(entry);
+
+      try{ 
+          await fetch('/save-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(currentConfig) }); 
+          toast('Saved Successfully!'); resetForm(); loadConfig(); 
+      }catch(e){ showErr('Failed to save configuration'); }
+    });
+
+    function showErr(msg){ $('#form-error').textContent = msg; $('#form-error').style.display='block'; }
+
+    window.deleteLoad = async (idx) => {
+      const d = currentConfig[idx]; 
+      const isOn = stateMap[d.loadID] === 1;
+      
+      if(isOn){
+        if(!confirm(`'${d.loadName}' is ON. It will be turned OFF before deleting. Proceed?`)) return;
+        try{ await fetch('/update', { method:'POST', body: JSON.stringify({ [d.loadID]: 0 }) }); }catch(e){}
+      } else {
+        if(!confirm(`Delete '${d.loadName}'?`)) return;
+      }
+      
+      currentConfig.splice(idx,1);
+      try{ 
+          await fetch('/save-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(currentConfig) }); 
+          toast('Deleted Successfully'); loadConfig(); 
+      }catch(e){}
+    };
+
+    // Render devices once on load or when config changes
+    function renderDevices(){
+      const dw = $('#devices-wrap'); dw.innerHTML = '';
+      if(currentConfig.length === 0) return dw.innerHTML = '<div class="empty">No devices configured.</div>';
+      
+      currentConfig.forEach(d=>{
+        const isOn = !!(stateMap[d.loadID] === 1);
+        const typeIcon = {light:'💡',fan:'🌀',ac:'❄️',tv:'📺',socket:'🔌'}[d.loadType] || '💡';
+        const node = document.createElement('div'); node.className = 'device';
+        
+        // Added id="sw-${id}" to the checkbox so we can target it later
+        node.innerHTML = `
+          <div class="title">
+            <div><div class="pi">${typeIcon} ${escapeHtml(d.loadName)}</div><div class="meta">${escapeHtml(d.loadID)}</div></div>
+            <div class="muted" style="font-size:12px">Relay: ${d.loadGPIO}</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center; margin-top:8px;">
+            <div class="meta">${d.hasPhysicalSwitch ? 'Has Switch' : 'No Switch'}</div>
+            <label class="switch">
+              <input type="checkbox" id="sw-${escapeHtml(d.loadID)}" ${isOn ? 'checked' : ''} data-load="${escapeHtml(d.loadID)}">
+              <span class="track"><span class="thumb"></span></span>
+            </label>
+          </div>
+          <div class="actions">
+            <div class="muted" style="font-size:13px">Switch: ${d.hasPhysicalSwitch ? 'GPIO '+d.switchGPIO : '—'}</div>
+            <div>
+              <button class="btn ghost" onclick="renameLoad('${escapeHtml(d.loadID)}')">Rename</button>
+              <button class="btn" onclick="pulseLoad('${escapeHtml(d.loadID)}')">Pulse</button>
+            </div>
+          </div>`;
+        dw.appendChild(node);
+      });
+
+      // Event listener for the switch
+      $all('.device .switch input').forEach(chk=> chk.addEventListener('change', async (ev)=>{
+        const loadID = ev.currentTarget.dataset.load; 
+        const newState = ev.currentTarget.checked ? 1 : 0; 
+        
+        // Optimistic update
+        stateMap[loadID] = newState; 
+        updateStats();
+        
+        try{ 
+            await fetch('/update', { method:'POST', body: JSON.stringify({ [loadID]: newState }) }); 
+        } catch(e) { 
+            toast('Update failed'); 
+            ev.currentTarget.checked = !ev.currentTarget.checked; 
+            stateMap[loadID] = ev.currentTarget.checked ? 1 : 0; 
+            updateStats();
+        }
+      }));
+    }
+
+    window.renameLoad = async (id) => {
+        const d = currentConfig.find(x => x.loadID === id); if(!d) return;
+        const newName = prompt('Enter new display name', d.loadName);
+        if(newName && newName.trim()){ 
+            d.loadName = newName.trim(); 
+            await fetch('/save-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(currentConfig) }); 
+            loadConfig(); 
+        }
+    }
+    
+    window.pulseLoad = async (id) => {
+        try{ 
+            await fetch('/update', { method:'POST', body: JSON.stringify({ [id]: 1 }) }); 
+            setTimeout(()=> fetch('/update', { method:'POST', body: JSON.stringify({ [id]: 0 }) }), 300); 
+            setTimeout(()=> fetch('/update', { method:'POST', body: JSON.stringify({ [id]: 1 }) }), 900); 
+            toast('Pulse sent'); 
+        }catch(e){}
+    }
+
+    // Smart Polling Logic: Only update the state of the existing elements
+    async function fetchStates(){
+      try{ 
+          const res = await fetch('/state'); 
+          if(res.ok){ 
+              const data = await res.json(); 
+              stateMap = (data && typeof data==='object') ? data : {}; 
+              $('#last-updated').textContent = new Date().toLocaleTimeString(); 
+              
+              // Only update the checkboxes instead of redrawing the whole list
+              for(let key in stateMap) {
+                 let el = document.getElementById('sw-' + key);
+                 if(el && el.checked !== (stateMap[key] === 1)) {
+                     el.checked = (stateMap[key] === 1);
+                 }
+              }
+              updateStats(); 
+          } 
+      }catch(e){}
+    }
+
+    function startPolling(){ if(!pollInterval) pollInterval = setInterval(fetchStates, POLL_MS); fetchStates(); $('#polling-status').textContent = 'active'; }
+    function stopPolling(){ if(pollInterval){ clearInterval(pollInterval); pollInterval = null; } $('#polling-status').textContent = 'paused'; }
+    function updateStats(){ $('#stat-online').textContent = Object.values(stateMap).filter(v=>v===1).length + ' ON'; }
+    function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    $('#btn-refresh').addEventListener('click', fetchStates);
+    loadConfig().then(()=> showTab('dashboard'));
+  </script>
+</body>
+</html>
