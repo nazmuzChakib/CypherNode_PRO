@@ -2,9 +2,15 @@
  * @file CypherNode.ino
  * @author Team Cypher-Z
  * @brief Optimized Dynamic Smart Home Server with Active-Low Support & Command Queue
- * @version 7.5.0 (Optimized & Commented)
+ * @version 7.5.1 (Optimized & Bug fixed)
  * @date 2026-03-12
  */
+
+// Enable Sensors
+#define ENABLE_DHT
+// #define ENABLE_VAC
+
+#include "Sensors.h"
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -388,7 +394,7 @@ void processToggleCommand(const String& targetID, int targetState) {
       // Remove command from queue (acknowledgment)
       Database.remove(aClientPush, togglePath + targetID, pushCallback, "ackToggle");
 
-      Serial.println("✓ Executed toggle for: " + targetID);
+      // Serial.println("✓ Executed toggle for: " + targetID);
       break;
     }
   }
@@ -414,7 +420,7 @@ void processDeleteCommand(const String& targetID) {
   Database.update<object_t>(aClientPush, "/CypherNode", object_t(jsonPayload), pushCallback, "appDelAtomic");
 
   pushSystemLog("Device " + targetID + " removed.");
-  Serial.println("✓ Executed delete for: " + targetID);
+  // Serial.println("✓ Executed delete for: " + targetID);
 }
 
 /**
@@ -469,7 +475,7 @@ void processAddCommand(const String& targetID, const String& valStr) {
   Database.update<object_t>(aClientPush, "/CypherNode", object_t(jsonPayload), pushCallback, "addAtomic");
 
   pushSystemLog("New device " + targetID + " added.");
-  Serial.println("✓ Executed add for: " + targetID);
+  // Serial.println("✓ Executed add for: " + targetID);
 
   // Remove command from queue
   Database.remove(aClientPush, "/CypherNode/commands/add/" + targetID, pushCallback, "ackAdd");
@@ -507,8 +513,8 @@ void cmdsStreamCallback(AsyncResult& aResult) {
   String valStr = RTDB.to<String>();
   if (valStr == "null") return;
 
-  Serial.println("\n[CMDS] Path: " + path);
-  Serial.println("[CMDS] Data: " + valStr);
+  // Serial.println("\n[CMDS] Path: " + path);
+  // Serial.println("[CMDS] Data: " + valStr);
 
   // Case 1: Full update at "/" (contains nested objects)
   if (path == "/") {
@@ -761,9 +767,11 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
+  initSensors();
+
   // Initialize LittleFS
   if (!LittleFS.begin(true)) {
-    Serial.println("LittleFS mount failed!");
+    // Serial.println("LittleFS mount failed!");
     return;
   }
 
@@ -819,12 +827,58 @@ void loop() {
     app.loop();
     Database.loop();
 
-    // Heartbeat
+    // --- SERVER HEARTBEAT & SENSOR LOGIC ---
     if (millis() - lastHeartbeatTime > HEARTBEAT_INTERVAL) {
       lastHeartbeatTime = millis();
-      heartbeatPulse++;
-      Database.set<int>(aClientPush, healthPath, heartbeatPulse, pushCallback, "pulseTask");
+
+      // float temp = 28.5;  // dht.readTemperature()
+      // float hum = 65.0;   // dht.readHumidity()
+      // float vol = 225.0;  // pzem.voltage()
+      // float cur = 1.2;    // pzem.current()
+
+      // 1. read sensor data
+      float temp, hum, vol, cur;
+      readSensorData(temp, hum, vol, cur);
+
+      // 2. create json payload
+      DynamicJsonDocument doc(512);
+
+      // Health Pulse
+      JsonObject healthObj = doc.createNestedObject("health");
+      JsonObject pulseObj = healthObj.createNestedObject("lastPulse");
+      pulseObj[".sv"] = "timestamp";
+
+      #ifdef ENABLE_DHT
+        // DHT Data
+        JsonObject dhtObj = doc.createNestedObject("sensors/dht");
+        dhtObj["temp"] = temp;
+        dhtObj["humidity"] = hum;
+      #endif
+
+      #ifdef ENABLE_VAC
+        // VAC Data
+        JsonObject vacObj = doc.createNestedObject("sensors/vac");
+        vacObj["voltage"] = vol;
+        vacObj["current"] = cur;
+      #endif
+
+      String payload;
+      serializeJson(doc, payload);
+
+      // ৩. ফায়ারবেসে রুট ডিরেক্টরিতে একসাথে পুশ করা
+      Database.update<object_t>(aClientPush, "/CypherNode", object_t(payload), pushCallback, "sensorPulseTask");
     }
+
+    // // Heartbeat
+    // if (millis() - lastHeartbeatTime > HEARTBEAT_INTERVAL) {
+    //   lastHeartbeatTime = millis();
+
+
+    //   // heartbeatPulse++;
+    //   // Database.set<int>(aClientPush, healthPath, heartbeatPulse, pushCallback, "pulseTask");
+    //   String payload = "{\"pulse\": {\".sv\": \"timestamp\"}}";
+    //   Database.update<object_t>(aClientPush, "/CypherNode/health", object_t(payload), pushCallback, "pulseTask");
+    // }
   }
 
   wifiManager.process();
