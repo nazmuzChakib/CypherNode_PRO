@@ -1,16 +1,18 @@
 /**
  * @file CypherNode.ino
  * @author Team Cypher-Z
- * @brief Optimized Dynamic Smart Home Server with Active-Low Support & Command Queue
- * @version 7.5.1 (Optimized & Bug fixed)
+ * @brief Optimized Dynamic Smart Home Server with Active-Low Support & Command Queue. Update functionality
+ * @version 7.7.1 (Optimized & Improved)
  * @date 2026-03-12
  */
 
 // Enable Sensors
 #define ENABLE_DHT
-// #define ENABLE_VAC
+// #define ENABLE_VAC // when use voltage sensor then uncomment it
 
 #include "Sensors.h"
+
+#include <time.h>  // for time
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -32,7 +34,6 @@
 // ==========================================================
 #define FIREBASE_API_KEY "AIzaSyDbH7maOdAXZZlVs9kxb3Kc0vxqAVXUHHc"
 #define FIREBASE_DATABASE_URL "https://cyphernode-27a24-default-rtdb.asia-southeast1.firebasedatabase.app"
-
 // Server login credentials (for Firebase authentication)
 #define ESP_USER_EMAIL "info.naxtechhome@gmail.com"
 #define ESP_USER_PASSWORD "pass@root_server"
@@ -59,6 +60,11 @@ AsyncClient aClientStates(sslStates);
 AsyncClient aClientCmds(sslCmds);
 AsyncClient aClientPush(sslPush);
 
+// Automation stream client
+WiFiClientSecure sslAuto;
+using AsyncClient = AsyncClientClass;
+AsyncClient aClientAuto(sslAuto);
+
 FirebaseApp app;
 RealtimeDatabase Database;
 UserAuth userAuth(FIREBASE_API_KEY, ESP_USER_EMAIL, ESP_USER_PASSWORD);
@@ -72,10 +78,18 @@ const String cmdsPath = "/CypherNode/commands";
 const String logsPath = "/CypherNode/logs";
 const String togglePath = "/CypherNode/commands/toggle/";
 const String healthPath = "/CypherNode/health/pulse";
+const String temp_alert = "/CypherNode/alerts/high_temp";
 
 // System constants
 const unsigned long DEBOUNCE_DELAY = 50;         // for physical switch debounce
-const unsigned long HEARTBEAT_INTERVAL = 15000;  // 15 seconds
+const unsigned long HEARTBEAT_INTERVAL = 20000;  // 20 seconds
+
+// Watchdog Timer Variables
+unsigned long lastWifiRetryTime = 0;
+const unsigned long wifiRetryInterval = 60000;
+
+// Alert Flag
+bool highTempAlertSent = false;
 
 // Heartbeat
 unsigned long lastHeartbeatTime = 0;
@@ -98,7 +112,39 @@ struct Device {
   bool stableSwitchState;  // debounced switch state
 };
 
+// ==========================================================
+// Automation rule list
+// ==========================================================
+struct AutoRule {
+  String id;
+  String type;
+  float triggerAbove;
+  String tempCondition = "above"; // for settigs temp rule type
+  float hysteresis = 1.0; // default value 1 (newly added)
+  int hour;
+  int minute;
+  String loadID;
+  bool active;
+
+  // new variable for handle new rules
+  bool actionTurnOn;      
+  bool lastConditionMet;  
+  int lastTriggeredDay;
+};
+
 std::vector<Device> devices;
+std::vector<AutoRule> activeRules;
+
+// ==========================================================
+// Async Flag System (Delayed Flash Write)
+// ==========================================================
+bool stateNeedsSave = false;
+unsigned long lastStateSaveTime = 0;
+
+// NTP setup
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 6 * 3600;
+const int daylightOffset_sec = 0;
 
 // ==========================================================
 // Forward Declarations
@@ -126,6 +172,10 @@ void handleGetState();
 void handleUpdateState();
 void handleDeleteLoad();
 void handlePhysicalSwitches();
+void saveAutomationsToFile();
+void loadAutomationsFromFile();
+void autoStreamCallback(AsyncResult& aResult);
+
 
 // ==========================================================
 // Hardware Control Helpers
@@ -556,9 +606,7 @@ void cmdsStreamCallback(AsyncResult& aResult) {
         processSystemCommand(kv.key().c_str(), kv.value().as<String>());
       }
     }
-  }
-  // Case 2: Specific sub-path updates
-  else if (path.startsWith("/toggle/")) {
+  } else if (path.startsWith("/toggle/")) {
     String targetID = path.substring(8);
     processToggleCommand(targetID, valStr.toInt());
   } else if (path.startsWith("/delete/")) {
@@ -719,6 +767,199 @@ void handleDeleteLoad() {
   server.send(200, "text/plain", "Deleted Successfully");
 }
 
+/**
+ * @brief Saves the current automations to a file.
+ * 
+ */
+void saveAutomationsToFile() {
+  DynamicJsonDocument doc(2048);
+  JsonArray arr = doc.to<JsonArray>();
+
+  for (auto& rule : activeRules) {
+    JsonObject obj = arr.createNestedObject();
+    obj["id"] = rule.id;
+    obj["type"] = rule.type;
+    obj["triggerAbove"] = rule.triggerAbove;
+    obj["tempCondition"] = rule.tempCondition; //done
+    obj["hysteresis"] = rule.hysteresis;
+    obj["hour"] = rule.hour;
+    obj["minute"] = rule.minute;
+    obj["loadID"] = rule.loadID;
+    obj["active"] = rule.active;
+  }
+
+  File file = LittleFS.open("/auto.json", "w");
+  if (file) {
+    serializeJson(doc, file);
+    file.close();
+  }
+}
+
+/**
+ * @brief load the automations from a file.
+ * 
+ */
+void loadAutomationsFromFile() {
+  if (!LittleFS.exists("/auto.json")) return;
+
+  File file = LittleFS.open("/auto.json", "r");
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+
+  if (!error) {
+    activeRules.clear();
+    JsonArray arr = doc.as<JsonArray>();
+    for (JsonObject obj : arr) {
+      AutoRule rule;
+      rule.id = obj["id"].as<String>();
+      rule.type = obj["type"].as<String>();
+      rule.loadID = obj["loadID"].as<String>();
+      rule.active = obj["active"].as<bool>();
+
+      if (rule.type == "temp") {
+        rule.triggerAbove = obj["triggerAbove"].as<float>();
+        rule.tempCondition = obj["tempCondition"].as<String>(); //done
+        rule.hysteresis = obj["hysteresis"].as<float>();
+        rule.hour = 0;
+        rule.minute = 0;
+      } else if (rule.type == "time") {
+        rule.hour = obj["hour"].as<int>();
+        rule.minute = obj["minute"].as<int>();
+        rule.triggerAbove = 0.0;
+      }
+      activeRules.push_back(rule);
+    }
+  }
+}
+
+/**
+* @brief updated listener
+*/
+void autoStreamCallback(AsyncResult& aResult) {
+  if (aResult.isError() || !aResult.available()) return;
+  RealtimeDatabaseResult& RTDB = aResult.to<RealtimeDatabaseResult>();
+
+  if (RTDB.isStream()) {
+    String eventType = RTDB.event();
+    if (eventType != "put" && eventType != "patch") return; 
+
+    String path = RTDB.dataPath();
+    String valStr = RTDB.to<String>();
+
+    // if deleted
+    if (valStr == "null") {
+      if (path == "/") { 
+        // if all rules are deleted
+        if (!activeRules.empty()) {
+          activeRules.clear();
+          saveAutomationsToFile();
+          Serial.println("System: All Automations Cleared.");
+        }
+      } else {
+        // when a single rule is deleted
+        String ruleID = path.substring(1);
+        auto it = std::remove_if(activeRules.begin(), activeRules.end(), [&](const AutoRule& r) { return r.id == ruleID; });
+        if (it != activeRules.end()) {
+          activeRules.erase(it, activeRules.end());
+          saveAutomationsToFile();
+          Serial.println("System: Rule " + ruleID + " Deleted.");
+        }
+      }
+      return;
+    }
+
+    DynamicJsonDocument doc(2048);
+    DeserializationError err = deserializeJson(doc, valStr);
+    if (err) return;
+
+    JsonObject root = doc.as<JsonObject>();
+
+    if (path == "/") {
+      // when the entire database is updated together
+      activeRules.clear();
+      for (JsonPair kv : root) {
+        AutoRule rule;
+        rule.id = kv.key().c_str();
+        JsonObject r = kv.value().as<JsonObject>();
+        
+        rule.type = r["type"].as<String>();
+        rule.loadID = r["loadID"].as<String>();
+        rule.active = r["active"].as<bool>();
+
+        if (rule.type == "temp") {
+          rule.triggerAbove = r["triggerAbove"].as<float>();
+          rule.tempCondition = r.containsKey("tempCondition") ? r["tempCondition"].as<String>() : "above"; // done
+          rule.hysteresis = r.containsKey("hysteresis") ? r["hysteresis"].as<float>() : 1.0;
+          rule.hour = 0; rule.minute = 0;
+        } else if (rule.type == "time") {
+          rule.hour = r["hour"].as<int>();
+          rule.minute = r["minute"].as<int>();
+          rule.triggerAbove = 0.0;
+        }
+        activeRules.push_back(rule);
+      }
+      Serial.println("System: All Dynamic Rules Synced!");
+      
+    } else {
+      // when a new rule is added or updated from the app
+      String ruleID = path.substring(1); // remove / from path
+      bool found = false;
+
+      // if the rule already exists, it will be updated
+      for (auto& rule : activeRules) {
+        if (rule.id == ruleID) {
+          if (root.containsKey("type")) rule.type = root["type"].as<String>();
+          if (root.containsKey("loadID")) rule.loadID = root["loadID"].as<String>();
+          if (root.containsKey("active")) rule.active = root["active"].as<bool>();
+          if (rule.type == "temp" && root.containsKey("triggerAbove")) {
+            rule.triggerAbove = root["triggerAbove"].as<float>();
+            rule.tempCondition = root.containsKey("tempCondition") ? root["tempCondition"].as<String>() : "above"; //done
+            rule.hysteresis = root.containsKey("hysteresis") ? root["hysteresis"].as<float>() : 1.0;
+          }
+          if (rule.type == "time") {
+            if (root.containsKey("hour")) rule.hour = root["hour"].as<int>();
+            if (root.containsKey("minute")) rule.minute = root["minute"].as<int>();
+          }
+          // reset lock flags for proper functioning
+          rule.lastConditionMet = false;
+          rule.lastTriggeredDay = -1;
+
+          found = true;
+          break;
+        }
+      }
+
+      // if the rule does not exist, it will be added
+      if (!found) {
+        AutoRule rule;
+        rule.id = ruleID;
+        rule.type = root["type"].as<String>();
+        rule.loadID = root["loadID"].as<String>();
+        rule.active = root["active"].as<bool>();
+        rule.actionTurnOn = root.containsKey("actionTurnOn") ? root["actionTurnOn"].as<bool>() : true;
+        rule.lastConditionMet = false;
+        rule.lastTriggeredDay = -1;
+        if (rule.type == "temp") {
+          rule.triggerAbove = root["triggerAbove"].as<float>();
+          rule.tempCondition = root.containsKey("tempCondition") ? root["tempCondition"].as<String>() : "above"; //done
+          rule.hysteresis = root.containsKey("hysteresis") ? root["hysteresis"].as<float>() : 1.0;
+          rule.hour = 0; 
+          rule.minute = 0;
+        } else if (rule.type == "time") {
+          rule.hour = root["hour"].as<int>();
+          rule.minute = root["minute"].as<int>();
+          rule.triggerAbove = 0.0;
+        }
+        activeRules.push_back(rule);
+      }
+      Serial.println("System: Rule " + ruleID + " Synced!");
+    }
+    
+    saveAutomationsToFile();
+  }
+}
+
 // ==========================================================
 // Physical Switch Handling
 // ==========================================================
@@ -777,6 +1018,7 @@ void setup() {
 
   // Load configuration (and states if available)
   loadConfigFromFile();
+  loadAutomationsFromFile();
 
   // Connect to WiFi (or start AP)
   if (!wifiManager.connectToWiFi()) {
@@ -784,10 +1026,13 @@ void setup() {
   } else {
     wifiManager.setServer(&server);
 
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);  // for time
+
     // Setup Firebase
     sslStates.setInsecure();
     sslCmds.setInsecure();
     sslPush.setInsecure();
+    sslAuto.setInsecure();  // automations
 
     initializeApp(aClientPush, app, getAuth(userAuth));
     app.getApp<RealtimeDatabase>(Database);
@@ -800,6 +1045,7 @@ void setup() {
 
     // Start listening to command stream
     Database.get(aClientCmds, cmdsPath, cmdsStreamCallback, true, "streamCmds");
+    Database.get(aClientAuto, "/CypherNode/autoRules", autoStreamCallback, true, "streamAuto");
 
     // (Optional) start listening to state stream if you want bidirectional cloud control
     // Database.get(aClientStates, basePath, statesStreamCallback, true, "streamStates");
@@ -823,66 +1069,392 @@ void setup() {
 }
 
 void loop() {
-  if (isFirebaseConnected) {
-    app.loop();
-    Database.loop();
+  unsigned long currentMillis = millis();
 
-    // --- SERVER HEARTBEAT & SENSOR LOGIC ---
-    if (millis() - lastHeartbeatTime > HEARTBEAT_INTERVAL) {
-      lastHeartbeatTime = millis();
+  // ==========================================
+  // ১. NETWORK HEALING (Non-Blocking)
+  // ==========================================
+  static bool wasWifiConnected = true;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (wasWifiConnected) {
+      Serial.println("System: WiFi Connection Lost!");
+      wasWifiConnected = false;
+      isFirebaseConnected = false;
+    }
+    if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
+      lastWifiRetryTime = currentMillis;
+      WiFi.disconnect();
+      WiFi.reconnect();
+    }
+  } else {
+    if (!wasWifiConnected) {
+      Serial.println("System: WiFi Restored!");
+      wasWifiConnected = true;
+      isFirebaseConnected = true; 
+    }
+    if (isFirebaseConnected) {
+      app.loop();
+      Database.loop();
+    }
+  }
 
-      // float temp = 28.5;  // dht.readTemperature()
-      // float hum = 65.0;   // dht.readHumidity()
-      // float vol = 225.0;  // pzem.voltage()
-      // float cur = 1.2;    // pzem.current()
+  // ==========================================
+  // ২. PHYSICAL SWITCHES
+  // ==========================================
+  handlePhysicalSwitches();
 
-      // 1. read sensor data
-      float temp, hum, vol, cur;
-      readSensorData(temp, hum, vol, cur);
+  // ==========================================
+  // ৩. DELAYED FLASH WRITE (The Magic Trick)
+  // ==========================================
+  if (stateNeedsSave && (currentMillis - lastStateSaveTime > 3000)) {
+    saveStatesToFile();
+    stateNeedsSave = false;
+  }
 
-      // 2. create json payload
+  // ==========================================
+  // ৪. FAST SENSOR POLLING (Every 2.5s)
+  // ==========================================
+  static float temp = NAN, hum = NAN, vol = NAN, cur = NAN;
+  static unsigned long lastSensorReadTime = 0;
+  if (currentMillis - lastSensorReadTime > 2500) {
+    lastSensorReadTime = currentMillis;
+    readSensorData(temp, hum, vol, cur);
+  }
+
+  // ==========================================
+  // ৫. EDGE AUTOMATION (Every 1.5s)
+  // ==========================================
+  static unsigned long lastAutoCheckTime = 0;
+  if (currentMillis - lastAutoCheckTime > 1500) {
+    lastAutoCheckTime = currentMillis;
+    struct tm timeinfo;
+    bool timeKnown = getLocalTime(&timeinfo);
+
+    for (auto& rule : activeRules) {
+      if (!rule.active) continue;
+
+      for (auto& dev : devices) {
+        if (dev.loadID == rule.loadID) {
+          
+          // --- Temperature Rule (With Above/Below Logic) ---
+          // if (rule.type == "temp" && !isnan(temp) && temp > 0) {
+          if (rule.type == "temp" && !isnan(temp)) {            
+            // "Drops Below" (<) Logic
+            if (rule.tempCondition == "below") {
+              float resetThreshold = rule.triggerAbove + rule.hysteresis; // রিসেট হবে উপরে উঠলে
+              
+              if (temp <= rule.triggerAbove) {
+                if (!rule.lastConditionMet) {
+                  rule.lastConditionMet = true; 
+                  if (dev.state != rule.actionTurnOn) {
+                    dev.state = rule.actionTurnOn;
+                    applyHardwareState(dev);
+                    if (isFirebaseConnected) updateFirebaseState(dev.loadID, dev.state);
+                    stateNeedsSave = true; lastStateSaveTime = currentMillis;
+                    pushSystemLog("Temp Rule [" + rule.id + "] Executed (Below)");
+                  }
+                }
+              } else if (temp >= resetThreshold) {
+                if (rule.lastConditionMet) {
+                  rule.lastConditionMet = false; // Unlock
+                }
+              }
+            } 
+            // "Goes Above" (>) Logic
+            else {
+              float resetThreshold = rule.triggerAbove - rule.hysteresis; // রিসেট হবে নিচে নামলে
+              
+              if (temp >= rule.triggerAbove) {
+                if (!rule.lastConditionMet) {
+                  rule.lastConditionMet = true; 
+                  if (dev.state != rule.actionTurnOn) {
+                    dev.state = rule.actionTurnOn;
+                    applyHardwareState(dev);
+                    if (isFirebaseConnected) updateFirebaseState(dev.loadID, dev.state);
+                    stateNeedsSave = true; lastStateSaveTime = currentMillis;
+                    pushSystemLog("Temp Rule [" + rule.id + "] Executed (Above)");
+                  }
+                }
+              } else if (temp <= resetThreshold) {
+                if (rule.lastConditionMet) {
+                  rule.lastConditionMet = false; // Unlock
+                }
+              }
+            }
+          }
+          // --- Time Rule ---
+          else if (rule.type == "time" && timeKnown) {
+            // if (timeinfo.tm_hour == rule.hour && timeinfo.tm_min == rule.minute && timeinfo.tm_sec < 5) {
+            if (timeinfo.tm_hour == rule.hour && timeinfo.tm_min == rule.minute) {
+              if (rule.lastTriggeredDay != timeinfo.tm_mday) {
+                rule.lastTriggeredDay = timeinfo.tm_mday;
+                if (dev.state != rule.actionTurnOn) {
+                  dev.state = rule.actionTurnOn;
+                  applyHardwareState(dev);
+                  if (isFirebaseConnected) updateFirebaseState(dev.loadID, dev.state);
+                  
+                  stateNeedsSave = true;
+                  lastStateSaveTime = currentMillis;
+                  pushSystemLog("Time Rule [" + rule.id + "] Executed");
+                }
+              }
+            }
+          }
+          break; 
+        }
+      }
+    }
+  }
+
+  // ==========================================
+  // ৬. FIREBASE ALERTS & SYNC (Every 20s)
+  // ==========================================
+  if (currentMillis - lastHeartbeatTime > 20000) {
+    lastHeartbeatTime = currentMillis;
+
+    if (isFirebaseConnected) {
       DynamicJsonDocument doc(512);
-
-      // Health Pulse
       JsonObject healthObj = doc.createNestedObject("health");
-      JsonObject pulseObj = healthObj.createNestedObject("lastPulse");
-      pulseObj[".sv"] = "timestamp";
+      healthObj["lastPulse"][".sv"] = "timestamp";
 
-      #ifdef ENABLE_DHT
-        // DHT Data
-        JsonObject dhtObj = doc.createNestedObject("sensors/dht");
-        dhtObj["temp"] = temp;
-        dhtObj["humidity"] = hum;
-      #endif
+#ifdef ENABLE_DHT
+      JsonObject dhtObj = doc.createNestedObject("sensors/dht");
+      dhtObj["temp"] = temp;
+      dhtObj["humidity"] = hum;
+      
+      if (!isnan(temp)) {
+        if (temp >= 40.0 && !highTempAlertSent) {
+          DynamicJsonDocument alertDoc(256);
+          alertDoc['id'] = "sys_alert_" + String(millis());
+          alertDoc["type"] = "warning";
+          alertDoc["title"] = "High Temperature Alert!";
+          alertDoc["body"] = "Current room temperature is " + String(temp, 1) + "°C.";
+          alertDoc["value"] = temp;
+          alertDoc["timestamp"] [".sv"] = "timestamp";
+          alertDoc["read"] = false;
 
-      #ifdef ENABLE_VAC
-        // VAC Data
-        JsonObject vacObj = doc.createNestedObject("sensors/vac");
-        vacObj["voltage"] = vol;
-        vacObj["current"] = cur;
-      #endif
+          String alertPayload;
+          serializeJson(alertDoc, alertPayload);
+          Database.push<object_t>(aClientPush, temp_alert, object_t(alertPayload), pushCallback, "alertTask");
+          highTempAlertSent = true;
+          Serial.println("System: High Temp Alert pushed");
+        } else if (temp < 38.0 && highTempAlertSent) {
+          highTempAlertSent = false;
+          Database.remove(aClientPush, temp_alert, pushCallback, "clearAlertTask");
+          Serial.println("System: High Temp Alert cleared");
+        }
+      }
+
+      // if (!isnan(temp)) {
+      //   if (temp >= 40.0 && !highTempAlertSent) {
+      //     String alertPayload = "{\"value\": " + String(temp) + ", \"timestamp\": {\".sv\": \"timestamp\"}}";
+      //     Database.set<object_t>(aClientPush, "/CypherNode/alerts/high_temp", object_t(alertPayload), pushCallback, "alertTask");
+      //     highTempAlertSent = true;
+      //   } else if (temp < 38.0 && highTempAlertSent) {
+      //     highTempAlertSent = false;
+      //     Database.remove(aClientPush, "/CypherNode/alerts/high_temp", pushCallback, "clearAlertTask");
+      //   }
+      // }
+#endif
+
+#ifdef ENABLE_VAC
+      JsonObject vacObj = doc.createNestedObject("sensors/vac");
+      vacObj["voltage"] = vol;
+      vacObj["current"] = cur;
+#endif
 
       String payload;
       serializeJson(doc, payload);
-
-      // ৩. ফায়ারবেসে রুট ডিরেক্টরিতে একসাথে পুশ করা
       Database.update<object_t>(aClientPush, "/CypherNode", object_t(payload), pushCallback, "sensorPulseTask");
     }
-
-    // // Heartbeat
-    // if (millis() - lastHeartbeatTime > HEARTBEAT_INTERVAL) {
-    //   lastHeartbeatTime = millis();
-
-
-    //   // heartbeatPulse++;
-    //   // Database.set<int>(aClientPush, healthPath, heartbeatPulse, pushCallback, "pulseTask");
-    //   String payload = "{\"pulse\": {\".sv\": \"timestamp\"}}";
-    //   Database.update<object_t>(aClientPush, "/CypherNode/health", object_t(payload), pushCallback, "pulseTask");
-    // }
   }
 
   wifiManager.process();
   wifiManager.handleSerialCommands(Serial);
-  handlePhysicalSwitches();
   server.handleClient();
 }
+
+/*
+void loop() {
+  unsigned long currentMillis = millis();
+
+  // ==========================================
+  // 1. SMART NETWORK HEALING
+  // ==========================================
+  static bool wasWifiConnected = true;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (wasWifiConnected) {
+      Serial.println("System: WiFi Connection Lost!");
+      wasWifiConnected = false;
+      isFirebaseConnected = false;
+    }
+    if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
+      lastWifiRetryTime = currentMillis;
+      Serial.println("System: Attempting WiFi reconnect...");
+      WiFi.disconnect();
+      WiFi.reconnect();
+    }
+  } else {
+    if (!wasWifiConnected) {
+      Serial.println("System: WiFi Restored! Re-initializing Firebase...");
+      wasWifiConnected = true;
+      isFirebaseConnected = true; 
+    }
+
+    if (isFirebaseConnected) {
+      app.loop();
+      Database.loop();
+    }
+  }
+
+  // ==========================================
+  // 2. PHYSICAL SWITCH HANDLING
+  // ==========================================
+  handlePhysicalSwitches();
+
+  // ==========================================
+  // 3. SENSOR POLLING (Every 2.5s)
+  // ==========================================
+  static float temp = NAN, hum = NAN, vol = NAN, cur = NAN;
+  static unsigned long lastSensorReadTime = 0;
+
+  if (currentMillis - lastSensorReadTime > 2500) {
+    lastSensorReadTime = currentMillis;
+    readSensorData(temp, hum, vol, cur);
+  }
+
+  // ==========================================
+  // 4. DECOUPLED EDGE AUTOMATION (Every 1.5s)
+  // ==========================================
+  static unsigned long lastAutoCheckTime = 0;
+  
+  if (currentMillis - lastAutoCheckTime > 1500) {
+    lastAutoCheckTime = currentMillis;
+
+    struct tm timeinfo;
+    bool timeKnown = getLocalTime(&timeinfo);
+
+    for (auto& rule : activeRules) {
+      if (!rule.active) continue;
+
+      for (auto& dev : devices) {
+        if (dev.loadID == rule.loadID) {
+
+          // --- Temperature Rule ---
+          if (rule.type == "temp" && !isnan(temp) && temp > 0) {
+            float resetThreshold = rule.triggerAbove - rule.hysteresis;
+
+            if (temp >= rule.triggerAbove) {
+              if (!rule.lastConditionMet) {
+                rule.lastConditionMet = true; // Lock
+                
+                // Advanced Debugging Prints
+                Serial.println("\n[AUTO] Temp Rule Triggered! Rule ID: " + rule.id);
+                Serial.println("[AUTO] Target Load: " + dev.loadID);
+                Serial.println("[AUTO] Action to perform: " + String(rule.actionTurnOn ? "TURN ON (1)" : "TURN OFF (0)"));
+                Serial.println("[AUTO] Current Load State: " + String(dev.state ? "ON (1)" : "OFF (0)"));
+
+                // if current state and rule action are different, then hardware will work
+                if (dev.state != rule.actionTurnOn) {
+                  dev.state = rule.actionTurnOn;
+                  applyHardwareState(dev);
+                  saveStatesToFile();
+                  
+                  if (isFirebaseConnected) {
+                    updateFirebaseState(dev.loadID, dev.state);
+                    // pushSystemLog is commented to prevent collision
+                  }
+                  Serial.println("[AUTO] SUCCESS: Hardware state updated and Firebase synced!");
+                } else {
+                  Serial.println("[AUTO] SKIP: Load is already in the requested state. Doing nothing.");
+                }
+              }
+            } 
+            else if (temp <= resetThreshold) {
+              if (rule.lastConditionMet) {
+                rule.lastConditionMet = false; // Unlock
+                Serial.println("\n[AUTO] Temp Rule Unlocked (Cooled down below " + String(resetThreshold) + "°C)");
+              }
+            }
+          }
+
+          // --- Time Rule ---
+          else if (rule.type == "time" && timeKnown) {
+            if (timeinfo.tm_hour == rule.hour && timeinfo.tm_min == rule.minute && timeinfo.tm_sec < 5) {
+              if (rule.lastTriggeredDay != timeinfo.tm_mday) {
+                rule.lastTriggeredDay = timeinfo.tm_mday;
+                
+                Serial.println("\n[AUTO] Time Rule Triggered! Rule ID: " + rule.id);
+                
+                if (dev.state != rule.actionTurnOn) {
+                  dev.state = rule.actionTurnOn;
+                  applyHardwareState(dev);
+                  saveStatesToFile();
+                  if (isFirebaseConnected) {
+                    updateFirebaseState(dev.loadID, dev.state);
+                  }
+                  Serial.println("[AUTO] SUCCESS: Time rule executed!");
+                } else {
+                  Serial.println("[AUTO] SKIP: Load is already in the requested state.");
+                }
+              }
+            }
+          }
+          break; // device loop break
+        }
+      }
+    }
+  }
+
+  // ==========================================
+  // ৫. FIREBASE SYNC & OPTIMIZED ALERTS (Every 20s)
+  // ==========================================
+  if (currentMillis - lastHeartbeatTime > 20000) {
+    lastHeartbeatTime = currentMillis;
+
+    if (isFirebaseConnected) {
+      DynamicJsonDocument doc(512);
+
+      JsonObject healthObj = doc.createNestedObject("health");
+      JsonObject pulseObj = healthObj.createNestedObject("lastPulse");
+      pulseObj[".sv"] = "timestamp";
+
+#ifdef ENABLE_DHT
+      JsonObject dhtObj = doc.createNestedObject("sensors/dht");
+      dhtObj["temp"] = temp;
+      dhtObj["humidity"] = hum;
+#endif
+
+#ifdef ENABLE_VAC
+      JsonObject vacObj = doc.createNestedObject("sensors/vac");
+      vacObj["voltage"] = vol;
+      vacObj["current"] = cur;
+#endif
+
+      String payload;
+      serializeJson(doc, payload);
+      Database.update<object_t>(aClientPush, "/CypherNode", object_t(payload), pushCallback, "sensorPulseTask");
+
+      // --- Optimized Alert Logic ---
+#ifdef ENABLE_DHT
+      if (!isnan(temp)) {
+        if (temp >= 40.0 && !highTempAlertSent) {
+          String alertPayload = "{\"value\": " + String(temp) + ", \"timestamp\": {\".sv\": \"timestamp\"}}";
+          Database.set<object_t>(aClientPush, "/CypherNode/alerts/high_temp", object_t(alertPayload), pushCallback, "alertTask");
+          highTempAlertSent = true;
+          Serial.println("CRITICAL: Temperature exceeded 40°C!");
+        } else if (temp < 38.0 && highTempAlertSent) {
+          highTempAlertSent = false;
+          Database.remove(aClientPush, "/CypherNode/alerts/high_temp", pushCallback, "clearAlertTask");
+        }
+      }
+#endif
+    }
+  }
+
+  wifiManager.process();
+  wifiManager.handleSerialCommands(Serial);
+  server.handleClient();
+}
+  */
