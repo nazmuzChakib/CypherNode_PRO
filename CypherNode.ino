@@ -1123,9 +1123,31 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
 
-  // Process WiFi Manager
+  // ==========================================
+  // CENTRALIZED SERIAL COMMAND ROUTER
+  // ==========================================
   wifiManager.process();
-  wifiManager.handleSerialCommands(Serial);
+  if (Serial.available()) {
+    String serialData = Serial.readStringUntil('\n');
+    serialData.trim();
+    
+    // if command start with "WIFI"
+    if (serialData.startsWith("WIFI")) {
+      String wifiCmd = serialData.substring(5); 
+      wifiManager.executeCommand(wifiCmd, Serial);
+    } 
+    else if (serialData.startsWith("SYS ")) {
+      String sysCmd = serialData.substring(4);
+      if (sysCmd == "REBOOT" || sysCmd == "RESTART") {
+        Serial.println("System: Rebooting...");
+        delay(1000);
+        ESP.restart();
+      }
+    }
+    else {
+      Serial.println("[Main] Unknown command: " + serialData);
+    }
+  }
 
   // State machine for init connection
   WiFiState currentState = wifiManager.getState();
