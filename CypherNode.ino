@@ -71,6 +71,10 @@ UserAuth userAuth(FIREBASE_API_KEY, ESP_USER_EMAIL, ESP_USER_PASSWORD);
 
 bool isFirebaseConnected = false;
 
+// wifimanager lib flag
+bool apModeStarted = false;
+bool connectionHandled = false;
+
 // Firebase database paths
 const String basePath = "/CypherNode/states";
 const String configPath = "/CypherNode/config";
@@ -172,6 +176,7 @@ void handleGetState();
 void handleUpdateState();
 void handleDeleteLoad();
 void handlePhysicalSwitches();
+void initCloudServices();
 void saveAutomationsToFile();
 void loadAutomationsFromFile();
 void autoStreamCallback(AsyncResult& aResult);
@@ -1001,6 +1006,48 @@ void handlePhysicalSwitches() {
 }
 
 // ==========================================================
+// Initialize Cloud & Network Services (New Function)
+// ==========================================================
+void initCloudServices() {
+  wifiManager.setServer(&server);
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);  // for time
+
+  // Setup Firebase
+  sslStates.setInsecure();
+  sslCmds.setInsecure();
+  sslPush.setInsecure();
+  sslAuto.setInsecure();  // automations
+
+  initializeApp(aClientPush, app, getAuth(userAuth));
+  app.getApp<RealtimeDatabase>(Database);
+  Database.url(FIREBASE_DATABASE_URL);
+
+  isFirebaseConnected = true;
+
+  // Sync all data to Firebase on boot
+  syncAllToFirebaseAtomic();
+
+  // Start listening to command stream
+  Database.get(aClientCmds, cmdsPath, cmdsStreamCallback, true, "streamCmds");
+  Database.get(aClientAuto, "/CypherNode/autoRules", autoStreamCallback, true, "streamAuto");
+
+  // Configure HTTP header collection for API key
+  const char* headerKeys[] = { "x-api-key" };
+  server.collectHeaders(headerKeys, 1);
+
+  // Setup HTTP routes
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/get-config", HTTP_GET, handleGetConfig);
+  server.on("/save-config", HTTP_POST, handleSaveConfig);
+  server.on("/state", HTTP_GET, handleGetState);
+  server.on("/update", HTTP_POST, handleUpdateState);
+  server.on("/delete", HTTP_DELETE, handleDeleteLoad);
+
+  server.begin();
+  pushSystemLog("CypherNode server booted and connected.");
+}
+
+// ==========================================================
 // Arduino Setup & Loop
 // ==========================================================
 
@@ -1020,6 +1067,11 @@ void setup() {
   loadConfigFromFile();
   loadAutomationsFromFile();
 
+  // for non-blocking wifi logic
+  wifiManager.begin();
+  Serial.println("System: Initiation WiFi connection...");
+  wifiManager.connectToWiFi(); // background wifi connection
+  /*
   // Connect to WiFi (or start AP)
   if (!wifiManager.connectToWiFi()) {
     wifiManager.startAPMode(server);
@@ -1065,46 +1117,72 @@ void setup() {
     server.begin();
 
     pushSystemLog("CypherNode server booted and connected.");
-  }
+  }*/
 }
 
 void loop() {
   unsigned long currentMillis = millis();
 
+  // Process WiFi Manager
+  wifiManager.process();
+  wifiManager.handleSerialCommands(Serial);
+
+  // State machine for init connection
+  WiFiState currentState = wifiManager.getState();
+
+  if (currentState == WIFI_STATE_CONNECTED && !connectionHandled) {
+    Serial.println("System: WiFi Connected Succesfully!");
+    initCloudServices();
+    connectionHandled = true;
+  } 
+  else if (currentState == WIFI_SCAN_FAILED && !apModeStarted) {
+    Serial.println("System: WiFi Failed. Starting AP Mode portal....");
+    wifiManager.startAPMode(server);
+    apModeStarted = true;
+  }
+
+  // Handle WebServer Clients (Only if AP or STA is running)
+  if (connectionHandled || apModeStarted) {
+    server.handleClient();
+  }
+
   // ==========================================
-  // ১. NETWORK HEALING (Non-Blocking)
+  // 1. NETWORK HEALING (Non-Blocking)
   // ==========================================
   static bool wasWifiConnected = true;
-  if (WiFi.status() != WL_CONNECTED) {
-    if (wasWifiConnected) {
-      Serial.println("System: WiFi Connection Lost!");
-      wasWifiConnected = false;
-      isFirebaseConnected = false;
-    }
-    if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
-      lastWifiRetryTime = currentMillis;
-      WiFi.disconnect();
-      WiFi.reconnect();
-    }
-  } else {
-    if (!wasWifiConnected) {
-      Serial.println("System: WiFi Restored!");
-      wasWifiConnected = true;
-      isFirebaseConnected = true; 
-    }
-    if (isFirebaseConnected) {
-      app.loop();
-      Database.loop();
+  if (connectionHandled) {
+    if (WiFi.status() != WL_CONNECTED) {
+      if (wasWifiConnected) {
+        Serial.println("System: WiFi Connection Lost!");
+        wasWifiConnected = false;
+        isFirebaseConnected = false;
+      }
+      if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
+        lastWifiRetryTime = currentMillis;
+        WiFi.disconnect();
+        WiFi.reconnect();
+      }
+    } else {
+      if (!wasWifiConnected) {
+        Serial.println("System: WiFi Restored!");
+        wasWifiConnected = true;
+        isFirebaseConnected = true; 
+      }
+      // Firebase loop
+      if (isFirebaseConnected) {
+        app.loop();
+        Database.loop();
+      }
     }
   }
 
   // ==========================================
-  // ২. PHYSICAL SWITCHES
+  // 2. PHYSICAL SWITCHES
   // ==========================================
   handlePhysicalSwitches();
 
   // ==========================================
-  // ৩. DELAYED FLASH WRITE (The Magic Trick)
+  // 3. DELAYED FLASH WRITE (The Magic Trick)
   // ==========================================
   if (stateNeedsSave && (currentMillis - lastStateSaveTime > 3000)) {
     saveStatesToFile();
@@ -1141,7 +1219,7 @@ void loop() {
           if (rule.type == "temp" && !isnan(temp)) {            
             // "Drops Below" (<) Logic
             if (rule.tempCondition == "below") {
-              float resetThreshold = rule.triggerAbove + rule.hysteresis; // রিসেট হবে উপরে উঠলে
+              float resetThreshold = rule.triggerAbove + rule.hysteresis;
               
               if (temp <= rule.triggerAbove) {
                 if (!rule.lastConditionMet) {
@@ -1162,7 +1240,7 @@ void loop() {
             } 
             // "Goes Above" (>) Logic
             else {
-              float resetThreshold = rule.triggerAbove - rule.hysteresis; // রিসেট হবে নিচে নামলে
+              float resetThreshold = rule.triggerAbove - rule.hysteresis; 
               
               if (temp >= rule.triggerAbove) {
                 if (!rule.lastConditionMet) {
@@ -1244,17 +1322,6 @@ void loop() {
           Serial.println("System: High Temp Alert cleared");
         }
       }
-
-      // if (!isnan(temp)) {
-      //   if (temp >= 40.0 && !highTempAlertSent) {
-      //     String alertPayload = "{\"value\": " + String(temp) + ", \"timestamp\": {\".sv\": \"timestamp\"}}";
-      //     Database.set<object_t>(aClientPush, "/CypherNode/alerts/high_temp", object_t(alertPayload), pushCallback, "alertTask");
-      //     highTempAlertSent = true;
-      //   } else if (temp < 38.0 && highTempAlertSent) {
-      //     highTempAlertSent = false;
-      //     Database.remove(aClientPush, "/CypherNode/alerts/high_temp", pushCallback, "clearAlertTask");
-      //   }
-      // }
 #endif
 
 #ifdef ENABLE_VAC
@@ -1273,188 +1340,3 @@ void loop() {
   wifiManager.handleSerialCommands(Serial);
   server.handleClient();
 }
-
-/*
-void loop() {
-  unsigned long currentMillis = millis();
-
-  // ==========================================
-  // 1. SMART NETWORK HEALING
-  // ==========================================
-  static bool wasWifiConnected = true;
-
-  if (WiFi.status() != WL_CONNECTED) {
-    if (wasWifiConnected) {
-      Serial.println("System: WiFi Connection Lost!");
-      wasWifiConnected = false;
-      isFirebaseConnected = false;
-    }
-    if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
-      lastWifiRetryTime = currentMillis;
-      Serial.println("System: Attempting WiFi reconnect...");
-      WiFi.disconnect();
-      WiFi.reconnect();
-    }
-  } else {
-    if (!wasWifiConnected) {
-      Serial.println("System: WiFi Restored! Re-initializing Firebase...");
-      wasWifiConnected = true;
-      isFirebaseConnected = true; 
-    }
-
-    if (isFirebaseConnected) {
-      app.loop();
-      Database.loop();
-    }
-  }
-
-  // ==========================================
-  // 2. PHYSICAL SWITCH HANDLING
-  // ==========================================
-  handlePhysicalSwitches();
-
-  // ==========================================
-  // 3. SENSOR POLLING (Every 2.5s)
-  // ==========================================
-  static float temp = NAN, hum = NAN, vol = NAN, cur = NAN;
-  static unsigned long lastSensorReadTime = 0;
-
-  if (currentMillis - lastSensorReadTime > 2500) {
-    lastSensorReadTime = currentMillis;
-    readSensorData(temp, hum, vol, cur);
-  }
-
-  // ==========================================
-  // 4. DECOUPLED EDGE AUTOMATION (Every 1.5s)
-  // ==========================================
-  static unsigned long lastAutoCheckTime = 0;
-  
-  if (currentMillis - lastAutoCheckTime > 1500) {
-    lastAutoCheckTime = currentMillis;
-
-    struct tm timeinfo;
-    bool timeKnown = getLocalTime(&timeinfo);
-
-    for (auto& rule : activeRules) {
-      if (!rule.active) continue;
-
-      for (auto& dev : devices) {
-        if (dev.loadID == rule.loadID) {
-
-          // --- Temperature Rule ---
-          if (rule.type == "temp" && !isnan(temp) && temp > 0) {
-            float resetThreshold = rule.triggerAbove - rule.hysteresis;
-
-            if (temp >= rule.triggerAbove) {
-              if (!rule.lastConditionMet) {
-                rule.lastConditionMet = true; // Lock
-                
-                // Advanced Debugging Prints
-                Serial.println("\n[AUTO] Temp Rule Triggered! Rule ID: " + rule.id);
-                Serial.println("[AUTO] Target Load: " + dev.loadID);
-                Serial.println("[AUTO] Action to perform: " + String(rule.actionTurnOn ? "TURN ON (1)" : "TURN OFF (0)"));
-                Serial.println("[AUTO] Current Load State: " + String(dev.state ? "ON (1)" : "OFF (0)"));
-
-                // if current state and rule action are different, then hardware will work
-                if (dev.state != rule.actionTurnOn) {
-                  dev.state = rule.actionTurnOn;
-                  applyHardwareState(dev);
-                  saveStatesToFile();
-                  
-                  if (isFirebaseConnected) {
-                    updateFirebaseState(dev.loadID, dev.state);
-                    // pushSystemLog is commented to prevent collision
-                  }
-                  Serial.println("[AUTO] SUCCESS: Hardware state updated and Firebase synced!");
-                } else {
-                  Serial.println("[AUTO] SKIP: Load is already in the requested state. Doing nothing.");
-                }
-              }
-            } 
-            else if (temp <= resetThreshold) {
-              if (rule.lastConditionMet) {
-                rule.lastConditionMet = false; // Unlock
-                Serial.println("\n[AUTO] Temp Rule Unlocked (Cooled down below " + String(resetThreshold) + "°C)");
-              }
-            }
-          }
-
-          // --- Time Rule ---
-          else if (rule.type == "time" && timeKnown) {
-            if (timeinfo.tm_hour == rule.hour && timeinfo.tm_min == rule.minute && timeinfo.tm_sec < 5) {
-              if (rule.lastTriggeredDay != timeinfo.tm_mday) {
-                rule.lastTriggeredDay = timeinfo.tm_mday;
-                
-                Serial.println("\n[AUTO] Time Rule Triggered! Rule ID: " + rule.id);
-                
-                if (dev.state != rule.actionTurnOn) {
-                  dev.state = rule.actionTurnOn;
-                  applyHardwareState(dev);
-                  saveStatesToFile();
-                  if (isFirebaseConnected) {
-                    updateFirebaseState(dev.loadID, dev.state);
-                  }
-                  Serial.println("[AUTO] SUCCESS: Time rule executed!");
-                } else {
-                  Serial.println("[AUTO] SKIP: Load is already in the requested state.");
-                }
-              }
-            }
-          }
-          break; // device loop break
-        }
-      }
-    }
-  }
-
-  // ==========================================
-  // ৫. FIREBASE SYNC & OPTIMIZED ALERTS (Every 20s)
-  // ==========================================
-  if (currentMillis - lastHeartbeatTime > 20000) {
-    lastHeartbeatTime = currentMillis;
-
-    if (isFirebaseConnected) {
-      DynamicJsonDocument doc(512);
-
-      JsonObject healthObj = doc.createNestedObject("health");
-      JsonObject pulseObj = healthObj.createNestedObject("lastPulse");
-      pulseObj[".sv"] = "timestamp";
-
-#ifdef ENABLE_DHT
-      JsonObject dhtObj = doc.createNestedObject("sensors/dht");
-      dhtObj["temp"] = temp;
-      dhtObj["humidity"] = hum;
-#endif
-
-#ifdef ENABLE_VAC
-      JsonObject vacObj = doc.createNestedObject("sensors/vac");
-      vacObj["voltage"] = vol;
-      vacObj["current"] = cur;
-#endif
-
-      String payload;
-      serializeJson(doc, payload);
-      Database.update<object_t>(aClientPush, "/CypherNode", object_t(payload), pushCallback, "sensorPulseTask");
-
-      // --- Optimized Alert Logic ---
-#ifdef ENABLE_DHT
-      if (!isnan(temp)) {
-        if (temp >= 40.0 && !highTempAlertSent) {
-          String alertPayload = "{\"value\": " + String(temp) + ", \"timestamp\": {\".sv\": \"timestamp\"}}";
-          Database.set<object_t>(aClientPush, "/CypherNode/alerts/high_temp", object_t(alertPayload), pushCallback, "alertTask");
-          highTempAlertSent = true;
-          Serial.println("CRITICAL: Temperature exceeded 40°C!");
-        } else if (temp < 38.0 && highTempAlertSent) {
-          highTempAlertSent = false;
-          Database.remove(aClientPush, "/CypherNode/alerts/high_temp", pushCallback, "clearAlertTask");
-        }
-      }
-#endif
-    }
-  }
-
-  wifiManager.process();
-  wifiManager.handleSerialCommands(Serial);
-  server.handleClient();
-}
-  */
