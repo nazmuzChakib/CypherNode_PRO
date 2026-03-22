@@ -1190,7 +1190,7 @@ void loop() {
   }
 
   // ==========================================
-  // ৪. FAST SENSOR POLLING (Every 2.5s)
+  // 4. FAST SENSOR POLLING (Every 2.5s)
   // ==========================================
   static float temp = NAN, hum = NAN, vol = NAN, cur = NAN;
   static unsigned long lastSensorReadTime = 0;
@@ -1200,7 +1200,7 @@ void loop() {
   }
 
   // ==========================================
-  // ৫. EDGE AUTOMATION (Every 1.5s)
+  // 5. EDGE AUTOMATION (Every 1.5s)
   // ==========================================
   static unsigned long lastAutoCheckTime = 0;
   if (currentMillis - lastAutoCheckTime > 1500) {
@@ -1285,7 +1285,7 @@ void loop() {
   }
 
   // ==========================================
-  // ৬. FIREBASE ALERTS & SYNC (Every 20s)
+  // 6. FIREBASE ALERTS & SYNC (Every 20s)
   // ==========================================
   if (currentMillis - lastHeartbeatTime > 20000) {
     lastHeartbeatTime = currentMillis;
@@ -1335,8 +1335,4 @@ void loop() {
       Database.update<object_t>(aClientPush, "/CypherNode", object_t(payload), pushCallback, "sensorPulseTask");
     }
   }
-
-  wifiManager.process();
-  wifiManager.handleSerialCommands(Serial);
-  server.handleClient();
 }
