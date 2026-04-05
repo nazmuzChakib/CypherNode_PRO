@@ -6,12 +6,40 @@ from datetime import datetime
 INPUT_HTML = 'index.html'      
 OUTPUT_HEADER = 'WebPage.h'    
 
+def minify_css(css):
+    css = re.sub(r'/\*.*?\*/', '', css, flags=re.DOTALL)
+    css = re.sub(r'\s*([{:;,])\s*', r'\1', css)
+    css = re.sub(r'\s+', ' ', css)
+    # Shorten colors: #ffffff -> #fff
+    css = re.sub(r'#([0-9a-fA-F])\1([0-9a-fA-F])\2([0-9a-fA-F])\3(?=[;}\s])', r'#\1\2\3', css)
+    # Remove 0 units: 0px -> 0
+    css = re.sub(r'(^|[:\s])0(?:px|em|pt|%)', r'\g<1>0', css)
+    css = re.sub(r';}', '}', css)
+    return css.strip()
+
+def minify_js(js):
+    js = re.sub(r'/\*.*?\*/', '', js, flags=re.DOTALL)
+    js = re.sub(r'(?<![:"\'/])//.*', '', js)
+    # Aggressive whitespace removal
+    js = re.sub(r'\s*([{}()=+\-*/,:;<>?!&|^%])\s*', r'\1', js)
+    # Shorten booleans
+    js = js.replace('true', '!0').replace('false', '!1')
+    js = re.sub(r'\s+', ' ', js)
+    return js.strip()
+
 def minify_html(html_str):
-    # Remove HTML Comments
-    html_str = re.sub(r'', '', html_str, flags=re.DOTALL)
-    # remove unnecessery spaching
+    # CSS & JS minification
+    html_str = re.sub(r'<style>(.*?)</style>', lambda m: f"<style>{minify_css(m.group(1))}</style>", html_str, flags=re.DOTALL)
+    html_str = re.sub(r'<script>(.*?)</script>', lambda m: f"<script>{minify_js(m.group(1))}</script>", html_str, flags=re.DOTALL)
+    
+    # Remove Comments
+    html_str = re.sub(r'<!--.*?-->', '', html_str, flags=re.DOTALL)
+    # Remove unnecessary attribute quotes (only if no special chars)
+    html_str = re.sub(r'([a-z-]+)="([a-z0-9-]+)"', r'\1=\2', html_str, flags=re.IGNORECASE)
+    # Remove self-closing slashes
+    html_str = re.sub(r'\s*/>', '>', html_str)
+    # Whitespace cleanup
     html_str = re.sub(r'>\s+<', '><', html_str)
-    # make a single spech from multi newline
     html_str = re.sub(r'\s{2,}', ' ', html_str)
     return html_str.strip()
 
@@ -34,6 +62,11 @@ def compress_and_convert():
     # Gzip compression
     compressed_data = gzip.compress(minified_bytes)
     compressed_size = len(compressed_data)
+    
+    # Calculate sizes in KB
+    original_kb = original_size / 1024
+    minified_kb = minified_size / 1024
+    compressed_kb = compressed_size / 1024
     
     # Convert binary data to Hexadecimal C Array(16 byte each line)
     hex_list = [f"0x{b:02X}" for b in compressed_data]
@@ -60,7 +93,7 @@ def compress_and_convert():
 
 #include <Arduino.h>
 
-// Gzipped HTML payload ({compressed_size} bytes)
+// Original: {original_kb:.2f} KB | Minified: {minified_kb:.2f} KB | Gzipped: {compressed_kb:.2f} KB
 const uint8_t index_html_gz[] PROGMEM = {{
 {formatted_hex}
 }};
@@ -77,9 +110,9 @@ const size_t index_html_gz_len = {compressed_size};
 
     print("-" * 40)
     print("Conversion Successful!")
-    print(f"Original Size : {original_size} bytes")
-    print(f"Minified Size : {minified_size} bytes")
-    print(f"Gzipped Size  : {compressed_size} bytes")
+    print(f"Original Size : {original_kb:.2f} KB")
+    print(f"Minified Size : {minified_kb:.2f} KB")
+    print(f"Gzipped Size  : {compressed_kb:.2f} KB")
     print("-" * 40)
     print(f"Generated '{OUTPUT_HEADER}' with timestamp: {current_time}")
 

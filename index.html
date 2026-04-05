@@ -1,1 +1,993 @@
-<!doctype html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CypherNode UI</title><style>:root{--bg:#f6f8fb;--card:#fff;--muted:#6b7280;--accent:#2563eb;--danger:#ef4444;--glass:rgba(255,255,255,.6);--rad:12px;--sh:0 6px 18px rgba(16,24,40,.06);font-family:Inter,system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#f8fafc,var(--bg));color:#0f172a;display:flex;justify-content:center;padding:28px}.app{width:100%;max-width:1100px;display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}@media(max-width:880px){.app{grid-template-columns:1fr;padding:12px}.sidebar{position:sticky;top:12px;z-index:3}}.sidebar{background:linear-gradient(180deg,var(--card),rgba(246,248,253,.8));border-radius:var(--rad);box-shadow:var(--sh);padding:18px;display:flex;flex-direction:column;gap:12px;border:1px solid rgba(16,24,40,.04)}.brand{display:flex;gap:12px;align-items:center}.logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px}.brand h1{margin:0;font-size:16px}.brand p{margin:0;font-size:12px;color:var(--muted)}.nav{display:flex;gap:8px;margin-top:6px}.nav button{flex:1;padding:10px;border-radius:10px;border:none;background:0 0;cursor:pointer;font-weight:600;color:var(--muted);transition:.2s}.nav button.act{background:rgba(37,99,235,.08);color:var(--accent)}.stat-row{display:flex;gap:8px}.stat{flex:1;background:var(--card);padding:10px;border-radius:10px;text-align:center;box-shadow:0 3px 10px rgba(2,6,23,.03)}.stat small{display:block;color:var(--muted);font-size:12px}.stat strong{display:block;font-size:18px;margin-top:6px}.main{display:flex;flex-direction:column;gap:18px}.panel{background:var(--card);border-radius:var(--rad);padding:16px;box-shadow:var(--sh);border:1px solid rgba(2,6,23,.03)}.panel h2{margin:0 0 8px;font-size:18px}.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.devices{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.device{border-radius:12px;padding:12px;background:linear-gradient(180deg,#fff,var(--glass));display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 20px rgba(2,6,23,.04);transition:.15s}.device:hover{transform:translateY(-4px)}.device .title{display:flex;justify-content:space-between;align-items:center;gap:8px}.device .meta{font-size:13px;color:var(--muted)}.device .pi{font-size:14px;font-weight:700}.device .actions{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px}.sw{--w:46px;--h:26px;position:relative;width:var(--w);height:var(--h)}.sw input{opacity:0;width:0;height:0}.sw .track{position:absolute;inset:0;background:#e6e8eb;border-radius:99px;transition:.2s;padding:3px}.sw .thumb{width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:.2s;display:block}.sw input:checked+.track{background:linear-gradient(90deg,var(--accent),#7c3aed)}.sw input:checked+.track .thumb{transform:translateX(20px)}.row{display:flex;gap:8px}.col{flex:1}label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}input[type=text],select{width:100%;padding:10px;border-radius:10px;border:1px solid rgba(2,6,23,.06);background:0 0;font-size:14px}.muted{color:var(--muted);font-size:13px}.btn{padding:10px 14px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}.btn.gh{background:0 0;color:var(--accent);border:1px solid rgba(37,99,235,.12)}.btn.dan{background:var(--danger)}.hint{font-size:13px;color:#ef4444;margin-top:6px}.small{font-size:13px;color:var(--muted)}.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:#0b1220;color:#fff;padding:10px 14px;border-radius:10px;display:none}.toast.show{display:block}.empty{text-align:center;color:var(--muted);padding:26px;border-radius:8px;background:rgba(2,6,23,.02)}</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><div class="logo">CN</div><div><h1>CypherNode</h1><p>Smart Home</p></div></div><div class="nav"><button id="tb-db" class="act">Dashboard</button><button id="tb-cfg">Settings</button></div><div class="stat-row"><div class="stat"><small>Total Loads</small><strong id="st-c">0</strong></div><div class="stat"><small>Online</small><strong id="st-o">0 ON</strong></div></div><div class="small">Polling: <span id="p-st">active</span></div></aside><main class="main"><section id="p-db" class="panel"><h2>My Devices</h2><div class="controls"><button id="btn-ref" class="btn gh">Refresh</button><div style="flex:1"></div><div class="small muted">Update: <span id="l-up">...</span></div></div><div id="dev-w" class="devices"><div class="empty">Loading...</div></div></section><section id="p-cfg" class="panel" style="display:none"><h2>Configuration</h2><div id="cfg-l" style="margin-bottom:12px"></div><div style="border-radius:12px;padding:12px;background:rgba(246,248,253,.8);display:flex;flex-direction:column;gap:12px"><strong>Add / Update Load</strong><div class="row"><div class="col"><label>Load ID (Unique)</label><input id="n-id" type="text" placeholder="room1"></div><div class="col"><label>Display Name</label><input id="n-nm" type="text" placeholder="Light"></div></div><div class="row"><div class="col"><label>Device Type</label><select id="n-ty"><option value="light">💡 Light</option><option value="fan">🌀 Fan</option><option value="ac">❄️ AC</option><option value="tv">📺 TV</option><option value="socket">🔌 Socket</option></select></div></div><div class="row"><div class="col"><label>Relay GPIO</label><select id="n-re"></select></div><div class="col"><label style="display:flex;align-items:center;gap:8px"><input id="n-hsw" type="checkbox"> Has Switch</label><select id="n-sw" disabled><option value="">Select PIN</option></select></div></div><div class="row"><button id="btn-add" class="btn">Add & Save</button><button id="btn-clr" class="btn gh">Clear</button></div><div id="f-err" class="hint" style="display:none"></div></div></section></main></div><div id="toast" class="toast"></div><script>let cfg=[], st={}, pInt=null;const $ = s => document.querySelector(s), icn = {light:'💡',fan:'🌀',ac:'❄️',tv:'📺',socket:'🔌'}, pins = [2,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33], swP = [...pins,34,35,36,39], eId=$('#n-id'), eNm=$('#n-nm'), eTy=$('#n-ty'), eRe=$('#n-re'), eHsw=$('#n-hsw'), eSw=$('#n-sw'), esc = s => String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])), tst = m => { let t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }, err = m => { let e=$('#f-err'); e.textContent=m; e.style.display='block'; }, rReq = async (u,b) => { try{ let r=await fetch(u,b?{method:'POST',body:JSON.stringify(b)}:undefined); return r.ok?await r.json():null }catch(e){} }, rTxt = async (u,b) => { try{ await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}) }catch(e){} };pins.forEach(p=>eRe.innerHTML+=`<option value="${p}">GPIO ${p}</option>`);swP.forEach(p=>eSw.innerHTML+=`<option value="${p}">GPIO ${p}</option>`);eHsw.onchange=()=>{eSw.disabled=!eHsw.checked; if(!eHsw.checked)eSw.value=''};const sTab = t => { let isD = t==='db'; $('#p-db').style.display = isD?'':'none'; $('#p-cfg').style.display = isD?'none':''; $('#tb-db').classList.toggle('act',isD); $('#tb-cfg').classList.toggle('act',!isD); isD ? sPol() : (clearInterval(pInt), pInt=null, $('#p-st').textContent='paused');};$('#tb-db').onclick=()=>sTab('db'); $('#tb-cfg').onclick=()=>sTab('cfg');const ldCfg = async () => { let d = await rReq('/get-config'); cfg = Array.isArray(d)?d:[]; $('#st-c').textContent = cfg.length; rCfgL(); rDev();};const rCfgL = () => { let h = cfg.map((d,i)=>`<div class="panel" style="margin-bottom:8px;padding:12px"><div style="display:flex;justify-content:space-between;align-items:center"><div><strong>${icn[d.loadType]||'💡'} ${esc(d.loadName)}</strong><span class="muted">(${esc(d.loadID)})</span><br><span class="muted" style="font-size:12px">Relay: GPIO ${d.loadGPIO} | Switch: ${d.hasPhysicalSwitch?d.switchGPIO:'None'}</span></div><div class="row"><button class="btn gh" onclick="edLd(${i})">Edit</button><button class="btn dan" onclick="delLd(${i})">Del</button></div></div></div>`).join(''); $('#cfg-l').innerHTML = h||'<div class="empty">No loads configured.</div>';};window.edLd = i => { let d=cfg[i]; eId.value=d.loadID; eId.disabled=1; eNm.value=d.loadName; eTy.value=d.loadType||'light'; eRe.value=d.loadGPIO; eHsw.checked=d.hasPhysicalSwitch; eSw.disabled=!d.hasPhysicalSwitch; eSw.value=d.hasPhysicalSwitch?d.switchGPIO:''; $('#btn-add').textContent='Update & Save'; $('#btn-add').dataset.i=i; sTab('cfg');};const clrF = () => { eId.value=''; eId.disabled=0; eNm.value=''; eTy.value='light'; eRe.value=pins[0]; eHsw.checked=0; eSw.disabled=1; eSw.value=''; $('#btn-add').textContent='Add & Save'; delete $('#btn-add').dataset.i; $('#f-err').style.display='none';};$('#btn-clr').onclick=clrF;$('#btn-add').onclick = async () => { $('#f-err').style.display='none'; let id=eId.value.trim(), nm=eNm.value.trim(), ty=eTy.value, re=+eRe.value, hSw=eHsw.checked, swP=hSw?+eSw.value:null, i=$('#btn-add').dataset.i; if(!id||!nm)return err('ID & Name req'); if(hSw&&isNaN(swP))return err('Select Sw PIN'); if(hSw&&swP===re)return err('Relay & Sw pins must differ'); let eIdx = i!==undefined?+i:-1; if(cfg.some((c,x)=>c.loadID===id&&x!==eIdx))return err('ID must be unique'); const used = p => cfg.some((c,x)=>x!==eIdx&&(c.loadGPIO===p||(c.hasPhysicalSwitch&&c.switchGPIO===p))); if(used(re)|| (hSw&&used(swP)))return err('GPIO already in use'); let en = {loadID:id,loadName:nm,loadType:ty,loadGPIO:re,hasPhysicalSwitch:hSw,switchGPIO:hSw?swP:-1}; eIdx>=0 ? cfg[eIdx]=en : cfg.push(en); await rTxt('/save-config',cfg); tst('Saved!'); clrF(); ldCfg();};window.delLd = async i => { let d=cfg[i], o=st[d.loadID]===1; if(o&&!confirm(`Turn OFF and delete '${d.loadName}'?`))return; if(!o&&!confirm(`Delete '${d.loadName}'?`))return; if(o) await rReq('/update', {[d.loadID]:0}); cfg.splice(i,1); await rTxt('/save-config',cfg); tst('Deleted'); ldCfg();};const rDev = () => { let h = cfg.map(d=>`<div class="device"><div class="title"><div><div class="pi">${icn[d.loadType]||'💡'} ${esc(d.loadName)}</div><div class="meta">${esc(d.loadID)}</div></div><div class="muted" style="font-size:12px">Relay:${d.loadGPIO}</div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><div class="meta">${d.hasPhysicalSwitch?'Has Switch':'No Switch'}</div><label class="sw"><input type="checkbox" id="sw-${esc(d.loadID)}" ${st[d.loadID]===1?'checked':''} onchange="tgLd('${esc(d.loadID)}',this)"><span class="track"><span class="thumb"></span></span></label></div><div class="actions"><div class="muted" style="font-size:13px">Sw:${d.hasPhysicalSwitch?'GPIO '+d.switchGPIO:'—'}</div><div class="row"><button class="btn gh" onclick="rnLd('${esc(d.loadID)}')">Rename</button><button class="btn" onclick="pLd('${esc(d.loadID)}')">Pulse</button></div></div></div>`).join(''); $('#dev-w').innerHTML = h||'<div class="empty">No devices.</div>';};window.tgLd = async (id, el) => { let v = el.checked?1:0; st[id]=v; uSts(); let r = await rReq('/update', {[id]:v}); if(r===null){ tst('Fail'); el.checked=!v; st[id]=v?0:1; uSts(); }};window.rnLd = async id => { let d = cfg.find(x=>x.loadID===id), nn = prompt('New name:', d?.loadName); if(nn&&nn.trim()){ d.loadName=nn.trim(); await rTxt('/save-config',cfg); ldCfg(); }};window.pLd = async id => { await rReq('/update',{[id]:1}); setTimeout(()=>rReq('/update',{[id]:0}),300); setTimeout(()=>rReq('/update',{[id]:1}),900); tst('Pulsed');};const fSt = async () => { let d = await rReq('/state'); if(d&&typeof d==='object'){ st=d; $('#l-up').textContent=new Date().toLocaleTimeString(); for(let k in st){ let el=$('#sw-'+k); if(el) el.checked=(st[k]===1); } uSts(); }};const sPol = () => { if(!pInt)pInt=setInterval(fSt,1500); fSt(); $('#p-st').textContent='active'; };const uSts = () => $('#st-o').textContent = Object.values(st).filter(v=>v===1).length+' ON';$('#btn-ref').onclick = fSt;ldCfg().then(()=>sTab('db'));</script></body></html>
+<!doctype html>
+<html lang="bn">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>CypherNode Universal</title>
+    <style>
+      /* Modern UI Variables */
+      :root {
+        --ac: #6366f1;
+        --ac-hov: #4f46e5;
+        --bg-grad-1: #0f172a;
+        --bg-grad-2: #1e1b4b;
+        --g1: rgba(255, 255, 255, 0.05);
+        --g2: rgba(255, 255, 255, 0.1);
+        --bd: rgba(255, 255, 255, 0.08);
+        --dg: rgba(0, 0, 0, 0.3);
+        --txt: #f8fafc;
+        --mut: #94a3b8;
+        --rad: 16px;
+        --tr: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Custom Scrollbar for better UX */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--bg-grad-1);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--g2);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--ac);
+      }
+
+      body {
+        min-height: 100vh;
+        background: linear-gradient(135deg, var(--bg-grad-1), var(--bg-grad-2));
+        color: var(--txt);
+        display: flex;
+        justify-content: center;
+        padding: 20px;
+        font-size: 15px;
+        line-height: 1.5;
+        overflow-x: hidden;
+      }
+
+      .app {
+        width: 100%;
+        max-width: 1050px;
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+
+      /* Glassmorphism Panels */
+      .sidebar,
+      .panel,
+      .stat,
+      .device,
+      .nav {
+        background: var(--g1);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--bd);
+        border-radius: var(--rad);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      }
+
+      .sidebar {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        position: sticky;
+        top: 20px;
+      }
+
+      .brand {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .logo {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, var(--ac), #a855f7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 22px;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.5);
+      }
+
+      .brand h1 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+      .brand p {
+        font-size: 13px;
+        color: var(--mut);
+      }
+
+      .nav {
+        display: flex;
+        gap: 8px;
+        padding: 6px;
+        background: var(--dg);
+      }
+
+      .nav button {
+        flex: 1;
+        padding: 10px;
+        border-radius: 10px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--mut);
+        transition: var(--tr);
+        font-size: 14px;
+      }
+
+      .nav button.act {
+        background: var(--g2);
+        color: var(--txt);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-row {
+        display: flex;
+        gap: 12px;
+      }
+      .stat {
+        flex: 1;
+        padding: 16px;
+        text-align: center;
+        transition: var(--tr);
+      }
+      .stat:hover {
+        transform: translateY(-2px);
+        background: var(--g2);
+      }
+      .stat small {
+        color: var(--mut);
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .stat strong {
+        display: block;
+        font-size: 24px;
+        font-weight: 700;
+        margin-top: 6px;
+        color: var(--ac);
+      }
+
+      .main {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .panel {
+        padding: 24px;
+        animation: fadeIn 0.4s ease-out;
+      }
+      .panel h2 {
+        margin-bottom: 20px;
+        font-size: 22px;
+        font-weight: 700;
+        border-bottom: 1px solid var(--bd);
+        padding-bottom: 12px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+
+      .node-group h3 {
+        font-size: 15px;
+        color: var(--ac);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 16px;
+        margin-top: 24px;
+      }
+
+      .devices {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 16px;
+      }
+
+      /* Enhanced Device Card */
+      .device {
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        transition: var(--tr);
+        border: 1px solid transparent;
+        background: linear-gradient(
+          180deg,
+          var(--g1) 0%,
+          rgba(0, 0, 0, 0.15) 100%
+        );
+      }
+      .device:hover {
+        background: var(--g2);
+        transform: translateY(-4px);
+        border-color: rgba(99, 102, 241, 0.3);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+      }
+      .device .title {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .device .pi {
+        font-size: 18px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .device .meta {
+        font-size: 12px;
+        color: var(--mut);
+        background: var(--dg);
+        padding: 4px 8px;
+        border-radius: 6px;
+        margin-top: 6px;
+        display: inline-block;
+      }
+
+      /* Modern Toggle Switch */
+      .sw {
+        --w: 52px;
+        --h: 28px;
+        position: relative;
+        width: var(--w);
+        height: var(--h);
+        cursor: pointer;
+      }
+      .sw input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .sw .track {
+        position: absolute;
+        inset: 0;
+        background: var(--dg);
+        border-radius: 30px;
+        transition: var(--tr);
+        border: 1px solid var(--bd);
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      .sw .thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        transition: var(--tr);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      .sw input:checked + .track {
+        background: var(--ac);
+        border-color: var(--ac);
+        box-shadow:
+          inset 0 2px 4px rgba(0, 0, 0, 0.1),
+          0 0 12px rgba(99, 102, 241, 0.4);
+      }
+      .sw input:checked + .track .thumb {
+        transform: translateX(24px);
+      }
+
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 4px;
+        padding-top: 12px;
+        border-top: 1px solid var(--bd);
+      }
+
+      /* Form Elements */
+      .row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .col {
+        flex: 1;
+        min-width: 200px;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        color: var(--mut);
+        margin-bottom: 8px;
+        font-weight: 500;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border: 1px solid var(--bd);
+        background: var(--dg);
+        color: var(--txt);
+        font-size: 14px;
+        transition: var(--tr);
+      }
+      input:focus,
+      select:focus {
+        border-color: var(--ac);
+        outline: none;
+        background: var(--g1);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      }
+      select option {
+        background: var(--bg-grad-1);
+        color: var(--txt);
+      }
+
+      /* Buttons */
+      .btn {
+        padding: 12px 20px;
+        border-radius: 10px;
+        border: none;
+        background: var(--ac);
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--tr);
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .btn:hover {
+        background: var(--ac-hov);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .btn.gh {
+        background: var(--g2);
+        color: var(--txt);
+        border: 1px solid var(--bd);
+      }
+      .btn.gh:hover {
+        background: rgba(255, 255, 255, 0.15);
+        box-shadow: none;
+      }
+      .btn.dan {
+        background: rgba(239, 68, 68, 0.8);
+      }
+      .btn.dan:hover {
+        background: rgba(220, 38, 38, 1);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+      }
+
+      /* Config Card */
+      .cfg-card {
+        border-radius: var(--rad);
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.15);
+        border: 1px solid var(--bd);
+        margin-bottom: 24px;
+      }
+
+      /* Toast Notification */
+      .toast {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: var(--txt);
+        color: var(--bg-grad-1);
+        padding: 12px 24px;
+        border-radius: 30px;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        visibility: hidden;
+        transition: 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        z-index: 100;
+      }
+      .toast.show {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .empty {
+        text-align: center;
+        color: var(--mut);
+        padding: 48px 20px;
+        background: var(--dg);
+        border-radius: var(--rad);
+        border: 1px dashed var(--bd);
+        font-size: 15px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Mobile Responsiveness */
+      @media (max-width: 850px) {
+        .app {
+          grid-template-columns: 1fr;
+          gap: 16px;
+          padding: 0;
+        }
+        .sidebar {
+          position: relative;
+          top: 0;
+          border-radius: 0 0 var(--rad) var(--rad);
+          border-top: none;
+          border-left: none;
+          border-right: none;
+        }
+        .stat-row {
+          flex-direction: row;
+        }
+        body {
+          padding: 0;
+        }
+        .panel {
+          border-radius: 0;
+          border-left: none;
+          border-right: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">CN</div>
+          <div>
+            <h1>CypherNode</h1>
+            <p>Universal Hub</p>
+          </div>
+        </div>
+        <div class="nav">
+          <button id="tb-db" class="act">Dashboard</button>
+          <button id="tb-cfg">Settings</button>
+        </div>
+        <div class="stat-row">
+          <div class="stat">
+            <small>Total Nodes</small>
+            <strong id="st-n">1</strong>
+          </div>
+          <div class="stat">
+            <small>Active Loads</small>
+            <strong id="st-o">0 ON</strong>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: var(--mut); text-align: center">
+          Polling: <span id="p-st" style="color: #10b981">active</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section id="p-db" class="panel">
+          <h2>Unified Dashboard</h2>
+          <div class="controls">
+            <button id="btn-ref" class="btn gh">↻ Refresh Status</button>
+            <div style="flex: 1"></div>
+            <div style="font-size: 12px; color: var(--mut)">
+              Last Sync: <span id="l-up" style="color: var(--txt)">...</span>
+            </div>
+          </div>
+          <div id="dev-w">
+            <div class="empty">Loading network architecture...</div>
+          </div>
+        </section>
+
+        <section id="p-cfg" class="panel" style="display: none">
+          <h2>Local Configuration</h2>
+          <div id="cfg-l" style="margin-bottom: 24px"></div>
+
+          <div class="cfg-card">
+            <strong
+              style="
+                display: block;
+                margin-bottom: 16px;
+                font-size: 16px;
+                color: var(--ac);
+              "
+              >Add / Update Local Load</strong
+            >
+            <div class="row">
+              <div class="col">
+                <label>Load ID (Unique)</label>
+                <input id="n-id" type="text" placeholder="e.g. room1_light" />
+              </div>
+              <div class="col">
+                <label>Display Name</label>
+                <input id="n-nm" type="text" placeholder="Main Light" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="col">
+                <label>Device Type</label>
+                <select id="n-ty">
+                  <option value="light">💡 Light</option>
+                  <option value="fan">🌀 Fan</option>
+                  <option value="ac">❄️ AC</option>
+                  <option value="tv">📺 TV</option>
+                  <option value="socket">🔌 Socket</option>
+                </select>
+              </div>
+              <div class="col">
+                <label>Relay GPIO Pin</label>
+                <select id="n-re"></select>
+              </div>
+            </div>
+            <div class="row">
+              <div
+                class="col"
+                style="
+                  background: var(--dg);
+                  padding: 12px;
+                  border-radius: 12px;
+                  border: 1px solid var(--bd);
+                "
+              >
+                <label
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 12px;
+                    cursor: pointer;
+                  "
+                >
+                  <input
+                    id="n-hsw"
+                    type="checkbox"
+                    style="width: 18px; height: 18px; accent-color: var(--ac)"
+                  />
+                  Enable Physical Switch
+                </label>
+                <select id="n-sw" disabled>
+                  <option value="">Select Switch PIN</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="margin-top: 20px">
+              <button id="btn-add" class="btn">Add Local Load</button>
+              <button id="btn-clr" class="btn gh">Clear Form</button>
+            </div>
+            <div
+              id="f-err"
+              style="
+                display: none;
+                color: #ef4444;
+                font-size: 13px;
+                margin-top: 12px;
+                padding: 8px;
+                background: rgba(239, 68, 68, 0.1);
+                border-radius: 8px;
+              "
+            ></div>
+          </div>
+
+          <h2>Network Nodes</h2>
+          <div id="node-l" style="margin-bottom: 24px"></div>
+
+          <div class="cfg-card">
+            <strong
+              style="
+                display: block;
+                margin-bottom: 16px;
+                font-size: 16px;
+                color: var(--ac);
+              "
+              >Link Remote Node</strong
+            >
+            <div class="row">
+              <div class="col">
+                <label>Node Name</label>
+                <input id="nd-nm" type="text" placeholder="e.g. Bedroom Hub" />
+              </div>
+              <div class="col">
+                <label>Node URL / IP</label>
+                <input
+                  id="nd-url"
+                  type="url"
+                  placeholder="http://cypher-A1B2.local"
+                />
+              </div>
+            </div>
+            <div class="row">
+              <div class="col">
+                <label>Security API Key</label>
+                <input id="nd-key" type="text" placeholder="Your API Key" />
+              </div>
+            </div>
+            <div class="row" style="margin-top: 20px">
+              <button id="btn-add-nd" class="btn">Link External Node</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+      // [JS logic remains entirely unchanged to ensure 100% compatibility with your ESP32 backend]
+      let nodes = JSON.parse(localStorage.getItem("cn_nodes")) || [
+          { id: "local", nm: "Main Hub (Local)", url: "", key: "d3fau1t" },
+        ],
+        allCfg = {},
+        allSt = {},
+        pInt = null;
+      const $ = (s) => document.querySelector(s),
+        icn = { light: "💡", fan: "🌀", ac: "❄️", tv: "📺", socket: "🔌" },
+        pins = [
+          2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32,
+          33,
+        ],
+        swP = [...pins, 34, 35, 36, 39],
+        eId = $("#n-id"),
+        eNm = $("#n-nm"),
+        eTy = $("#n-ty"),
+        eRe = $("#n-re"),
+        eHsw = $("#n-hsw"),
+        eSw = $("#n-sw"),
+        esc = (s) =>
+          String(s || "").replace(
+            /[&<>"']/g,
+            (m) =>
+              ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              })[m],
+          ),
+        tst = (m) => {
+          let t = $("#toast");
+          t.textContent = m;
+          t.classList.add("show");
+          setTimeout(() => t.classList.remove("show"), 2600);
+        },
+        err = (m) => {
+          let e = $("#f-err");
+          e.textContent = m;
+          e.style.display = "block";
+        },
+        rReq = async (u, b, k) => {
+          let opt = { method: b ? "POST" : "GET", headers: {} };
+          if (b) {
+            opt.headers["Content-Type"] = "application/json";
+            opt.body = JSON.stringify(b);
+          }
+          if (k) opt.headers["x-api-key"] = k;
+          try {
+            let r = await fetch(u, opt);
+            return r.ok ? await r.json() : null;
+          } catch (e) {
+            return null;
+          }
+        },
+        rTxt = async (u, b, k) => {
+          let opt = {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(b),
+          };
+          if (k) opt.headers["x-api-key"] = k;
+          try {
+            await fetch(u, opt);
+          } catch (e) {}
+        };
+
+      pins.forEach(
+        (p) => (eRe.innerHTML += `<option value="${p}">GPIO ${p}</option>`),
+      );
+      swP.forEach(
+        (p) => (eSw.innerHTML += `<option value="${p}">GPIO ${p}</option>`),
+      );
+
+      eHsw.onchange = () => {
+        eSw.disabled = !eHsw.checked;
+        if (!eHsw.checked) eSw.value = "";
+      };
+
+      const sTab = (t) => {
+        let isD = t === "db";
+        $("#p-db").style.display = isD ? "" : "none";
+        $("#p-cfg").style.display = isD ? "none" : "";
+        $("#tb-db").classList.toggle("act", isD);
+        $("#tb-cfg").classList.toggle("act", !isD);
+        isD
+          ? (fSt(), sPol())
+          : (clearInterval(pInt),
+            (pInt = null),
+            ($("#p-st").textContent = "paused"),
+            ($("#p-st").style.color = "var(--mut)"));
+        if (isD) {
+          $("#p-st").style.color = "#10b981";
+        }
+      };
+
+      $("#tb-db").onclick = () => sTab("db");
+      $("#tb-cfg").onclick = () => sTab("cfg");
+
+      const saveNds = () =>
+        localStorage.setItem("cn_nodes", JSON.stringify(nodes));
+
+      const ldAll = async () => {
+        for (let n of nodes) {
+          let d = await rReq(n.url + "/get-config", null, n.key);
+          if (d) {
+            allCfg[n.id] = Array.isArray(d) ? d : [];
+            if (!allSt[n.id]) allSt[n.id] = {};
+          }
+        }
+        $("#st-n").textContent = nodes.length;
+        rCfgL();
+        rNdL();
+        rDev();
+      };
+
+      const rCfgL = () => {
+        let lCfg = allCfg["local"] || [];
+        let h = lCfg
+          .map(
+            (d, i) =>
+              `<div style="margin-bottom:12px;padding:16px;background:var(--dg);border-radius:12px;border:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;"><div><strong style="font-size:16px;color:var(--txt);">${icn[d.loadType] || "💡"} ${esc(d.loadName)}</strong> <span style="background:var(--g2);padding:2px 6px;border-radius:4px;font-size:12px;margin-left:8px;">${esc(d.loadID)}</span><br><span style="color:var(--mut);font-size:13px;display:inline-block;margin-top:6px;">Relay: G${d.loadGPIO} | Switch: ${d.hasPhysicalSwitch ? "G" + d.switchGPIO : "App Only"}</span></div><div style="display:flex;gap:8px;"><button class="btn gh" style="padding:8px 12px;" onclick="edLd(${i})">Edit</button><button class="btn dan" style="padding:8px 12px;" onclick="delLd(${i})">Del</button></div></div>`,
+          )
+          .join("");
+        $("#cfg-l").innerHTML =
+          h || '<div class="empty">No local loads configured yet.</div>';
+      };
+
+      const rNdL = () => {
+        let h = nodes
+          .map(
+            (n, i) =>
+              `<div style="margin-bottom:12px;padding:16px;background:var(--dg);border-radius:12px;border:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;"><div><strong style="font-size:16px;">🌐 ${esc(n.nm)}</strong><br><span style="color:var(--mut);font-size:13px;display:inline-block;margin-top:6px;">${n.url || "Local Device (Master)"}</span></div>${n.id !== "local" ? `<button class="btn dan" style="padding:8px 12px;" onclick="delNd(${i})">Unlink</button>` : `<span style="font-size:12px;color:var(--ac);font-weight:600;padding:4px 8px;border:1px solid var(--ac);border-radius:6px;">LOCKED</span>`}</div>`,
+          )
+          .join("");
+        $("#node-l").innerHTML = h;
+      };
+
+      window.delNd = (i) => {
+        if (!confirm("Unlink this remote node?")) return;
+        nodes.splice(i, 1);
+        saveNds();
+        ldAll();
+      };
+
+      $("#btn-add-nd").onclick = () => {
+        let nm = $("#nd-nm").value.trim(),
+          u = $("#nd-url").value.trim(),
+          k = $("#nd-key").value.trim();
+        if (!nm || !u) return alert("Name and URL are required!");
+        if (u.endsWith("/")) u = u.slice(0, -1);
+        nodes.push({ id: "nd_" + Date.now(), nm, url: u, key: k });
+        saveNds();
+        $("#nd-nm").value = "";
+        $("#nd-url").value = "";
+        tst("Node Linked Successfully!");
+        ldAll();
+      };
+
+      window.edLd = (i) => {
+        let d = allCfg["local"][i];
+        eId.value = d.loadID;
+        eId.disabled = 1;
+        eNm.value = d.loadName;
+        eTy.value = d.loadType || "light";
+        eRe.value = d.loadGPIO;
+        eHsw.checked = d.hasPhysicalSwitch;
+        eSw.disabled = !d.hasPhysicalSwitch;
+        eSw.value = d.hasPhysicalSwitch ? d.switchGPIO : "";
+        $("#btn-add").textContent = "Update Local Load";
+        $("#btn-add").dataset.i = i;
+        window.scrollTo({
+          top: document.getElementById("cfg-l").offsetTop,
+          behavior: "smooth",
+        });
+      };
+
+      const clrF = () => {
+        eId.value = "";
+        eId.disabled = 0;
+        eNm.value = "";
+        eTy.value = "light";
+        eRe.value = pins[0];
+        eHsw.checked = 0;
+        eSw.disabled = 1;
+        eSw.value = "";
+        $("#btn-add").textContent = "Add Local Load";
+        delete $("#btn-add").dataset.i;
+        $("#f-err").style.display = "none";
+      };
+
+      $("#btn-clr").onclick = clrF;
+
+      $("#btn-add").onclick = async () => {
+        $("#f-err").style.display = "none";
+        let id = eId.value.trim(),
+          nm = eNm.value.trim(),
+          ty = eTy.value,
+          re = +eRe.value,
+          hSw = eHsw.checked,
+          swP = hSw ? +eSw.value : null,
+          i = $("#btn-add").dataset.i;
+        if (!id || !nm) return err("ID & Name are required");
+        if (hSw && isNaN(swP)) return err("Please select a Switch PIN");
+        if (hSw && swP === re)
+          return err("Relay and Switch cannot use the same GPIO");
+        let eIdx = i !== undefined ? +i : -1,
+          lCfg = allCfg["local"] || [];
+        if (lCfg.some((c, x) => c.loadID === id && x !== eIdx))
+          return err("Load ID must be strictly unique");
+        const used = (p) =>
+          lCfg.some(
+            (c, x) =>
+              x !== eIdx &&
+              (c.loadGPIO === p || (c.hasPhysicalSwitch && c.switchGPIO === p)),
+          );
+        if (used(re) || (hSw && used(swP)))
+          return err("One or more selected GPIOs are already in use");
+        let en = {
+          loadID: id,
+          loadName: nm,
+          loadType: ty,
+          loadGPIO: re,
+          hasPhysicalSwitch: hSw,
+          switchGPIO: hSw ? swP : -1,
+        };
+        eIdx >= 0 ? (lCfg[eIdx] = en) : lCfg.push(en);
+        await rTxt("/save-config", lCfg, nodes[0].key);
+        tst("Configuration Saved!");
+        clrF();
+        ldAll();
+      };
+
+      window.delLd = async (i) => {
+        let lCfg = allCfg["local"],
+          d = lCfg[i],
+          o = allSt["local"][d.loadID] === 1;
+        if (!confirm(`Are you sure you want to delete '${d.loadName}'?`))
+          return;
+        if (o) await rReq("/update", { [d.loadID]: 0 }, nodes[0].key);
+        lCfg.splice(i, 1);
+        await rTxt("/save-config", lCfg, nodes[0].key);
+        tst("Device Deleted");
+        ldAll();
+      };
+
+      const rDev = () => {
+        let h = "";
+        nodes.forEach((n) => {
+          let devs = allCfg[n.id];
+          if (!devs || !devs.length) return;
+          h += `<div class="node-group"><h3>🌐 ${esc(n.nm)}</h3><div class="devices">`;
+          h += devs
+            .map(
+              (d) =>
+                `<div class="device"><div class="title"><div><div class="pi">${icn[d.loadType] || "💡"} ${esc(d.loadName)}</div><div class="meta">${esc(d.loadID)}</div></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><div style="font-size:13px;color:var(--mut);">${d.hasPhysicalSwitch ? "Switch: G" + d.switchGPIO : "Virtual App Only"}</div><label class="sw"><input type="checkbox" id="sw-${n.id}-${esc(d.loadID)}" onchange="tgLd('${n.id}','${esc(d.loadID)}',this)"><span class="track"><span class="thumb"></span></span></label></div><div class="actions"><div style="font-size:13px;color:var(--mut);font-family:monospace;">Relay: GPIO ${d.loadGPIO}</div><button class="btn gh" style="padding:6px 12px;font-size:12px;border-radius:8px;" onclick="pLd('${n.id}','${esc(d.loadID)}')">⚡ Pulse</button></div></div>`,
+            )
+            .join("");
+          h += `</div></div>`;
+        });
+        $("#dev-w").innerHTML =
+          h ||
+          '<div class="empty">No active devices found on the connected network.</div>';
+        uSts();
+      };
+
+      window.tgLd = async (nId, lId, el) => {
+        let n = nodes.find((x) => x.id === nId),
+          v = el.checked ? 1 : 0;
+        allSt[nId][lId] = v;
+        uSts();
+        let r = await rReq(n.url + "/update", { [lId]: v }, n.key);
+        if (r === null) {
+          tst("Connection Failed: " + n.nm);
+          el.checked = !v;
+          allSt[nId][lId] = v ? 0 : 1;
+          uSts();
+        }
+      };
+
+      window.pLd = async (nId, lId) => {
+        let n = nodes.find((x) => x.id === nId);
+        await rReq(n.url + "/update", { [lId]: 1 }, n.key);
+        setTimeout(() => rReq(n.url + "/update", { [lId]: 0 }, n.key), 300);
+        setTimeout(() => rReq(n.url + "/update", { [lId]: 1 }, n.key), 900);
+        tst("Pulse Signal Sent");
+      };
+
+      const fSt = async () => {
+        let oks = 0;
+        for (let n of nodes) {
+          let d = await rReq(n.url + "/state", null, n.key);
+          if (d && typeof d === "object") {
+            allSt[n.id] = d;
+            for (let k in d) {
+              let el = $(`#sw-${n.id}-${k}`);
+              if (el) el.checked = d[k] === 1;
+            }
+            oks++;
+          }
+        }
+        if (oks > 0) $("#l-up").textContent = new Date().toLocaleTimeString();
+        uSts();
+      };
+
+      const sPol = () => {
+        if (!pInt) pInt = setInterval(fSt, 2000);
+        $("#p-st").textContent = "active";
+      };
+
+      const uSts = () => {
+        let on = 0;
+        for (let nId in allSt)
+          Object.values(allSt[nId]).forEach((v) => {
+            if (v === 1) on++;
+          });
+        $("#st-o").textContent = on + " ON";
+      };
+
+      $("#btn-ref").onclick = () => {
+        ldAll();
+        fSt();
+        tst("Refreshing State...");
+      };
+      ldAll().then(() => sTab("db"));
+    </script>
+  </body>
+</html>

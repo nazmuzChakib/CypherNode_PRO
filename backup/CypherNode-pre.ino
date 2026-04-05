@@ -28,7 +28,6 @@
 #include <esp_mac.h>
 
 #include "WebPage.h"
-#include "secrets.h"  // ⚠️ Private credentials — excluded from git
 
 #define ENABLE_DATABASE
 #define ENABLE_USER_AUTH
@@ -37,11 +36,20 @@
 #include <WiFiClientSecure.h>
 
 // ==========================================================
-// HTTP Authentication Credentials (loaded from secrets.h)
+// Firebase Configuration
 // ==========================================================
-const char* HTTP_USERNAME = HTTP_USERNAME_SECRET;
-const char* HTTP_PASSWORD = HTTP_PASSWORD_SECRET;
-const String API_KEY = API_KEY_SECRET;
+#define FIREBASE_API_KEY "AIzaSyDbH7maOdAXZZlVs9kxb3Kc0vxqAVXUHHc"
+#define FIREBASE_DATABASE_URL "https://cyphernode-27a24-default-rtdb.asia-southeast1.firebasedatabase.app"
+// Server login credentials (for Firebase authentication)
+#define ESP_USER_EMAIL "info.naxtechhome@gmail.com"
+#define ESP_USER_PASSWORD "pass@root_server"
+
+// ==========================================================
+// HTTP Authentication Credentials (for Web UI & API)
+// ==========================================================
+const char* HTTP_USERNAME = "CypherNode";
+const char* HTTP_PASSWORD = "CypherZ_team";
+const String API_KEY = "d3fau1t";  // Optional API key for header-based auth
 
 // ==========================================================
 // Global Objects
@@ -87,8 +95,8 @@ String logsPath;
 String togglePath;
 String healthPath;
 String temp_alert;
-String autoPath;  // For automation rules
-String ipPath;    // For saving local IP
+String autoPath;  // অটোমেশন রুলের জন্য
+String ipPath;    // লোকাল আইপি সেভ করার জন্য
 
 // System constants
 const unsigned long DEBOUNCE_DELAY = 50;         // for physical switch debounce
@@ -458,9 +466,7 @@ void processToggleCommand(const String& targetID, int targetState) {
       // Apply new state
       dev.state = (targetState == 1);
       applyHardwareState(dev);
-      // saveStatesToFile();
-      stateNeedsSave = true;
-      lastStateSaveTime = millis();
+      saveStatesToFile();
 
       // Report back to Firebase (so UI updates)
       updateFirebaseState(dev.loadID, dev.state);
@@ -519,13 +525,6 @@ void processAddCommand(const String& targetID, const String& valStr) {
   // ==========================================
   bool isDuplicate = false;
   String errorMsg = "";
-
-  // SELF COLLISION CHECK (New!)
-  if (newHasSwitch && newLoadGPIO == newLoadGPIO) {
-    pushSystemLog("Validation Failed for " + targetID + ": Load GPIO and Switch GPIO cannot be the same");
-    Database.remove(aClientPush, cmdsPath + "/add/" + targetID, pushCallback, "ackAddErr");
-    return;
-  }
 
   for (const auto& d : devices) {
     // 1. Load ID duplicate check
@@ -706,19 +705,6 @@ void cmdsStreamCallback(AsyncResult& aResult) {
  * @return true if authorized, false otherwise.
  */
 bool isAuthorizedAPI() {
-  // 1. CORS Preflight Bypass (importent for Cross-Node UI)
-  if (server.method() == HTTP_OPTIONS) {
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, DELETE");
-    server.sendHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key, Authorization");
-    server.send(204); // No Content response for preflight
-    return true;      // Let the options request pass without auth
-  }
-
-  // 2. Add CORS headers to actual responses so browser can read them
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-
-  // 3. Normal Authentication Check
   if (server.hasHeader("x-api-key") && server.header("x-api-key") == API_KEY) {
     return true;
   }
@@ -766,18 +752,9 @@ void handleSaveConfig() {
   if (!isAuthorizedAPI()) return server.send(401, "text/plain", "Unauthorized");
   if (!server.hasArg("plain")) return server.send(400, "text/plain", "Body not received");
 
-  String payload = server.arg("plain");
-
-  // check first if data is valid or not
-  DynamicJsonDocument testDoc;
-  DeserializationError err = deserializeJson(testDoc, payload);
-  if (err) {
-    return server.send(400, "text/plain", "Invalid JSON");
-  }
-
   // Write new config file
   File file = LittleFS.open("/config.json", "w");
-  file.print(payload);
+  file.print(server.arg("plain"));
   file.close();
 
   // Reload devices (preserves states of matching IDs)
@@ -865,9 +842,9 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
 
   if (WiFi.status() == WL_CONNECTED && targetNodeID != "") {
     HTTPClient http;
-    http.setTimeout(3000);
+    http.setTimeout(3000); // mDNS রিজলভ হতে একটু সময় লাগতে পারে
     
-    // Using mDNS local domain instead of IP
+    // আইপির বদলে সরাসরি mDNS লোকাল ডোমেইন ব্যবহার করা হচ্ছে
     String targetHost = "cypher-" + targetNodeID + ".local";
     String url = "http://" + targetHost + "/update";
     
@@ -878,14 +855,14 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
     String jsonPayload = "{\"" + loadID + "\":" + String(state) + "}";
     int httpResponseCode = http.POST(jsonPayload);
 
-    // 200 OK means mDNS worked and command executed
+    // 200 OK পেলে বুঝব mDNS কাজ করেছে এবং কমান্ড এক্সিকিউট হয়েছে
     if (httpResponseCode == 200) {
       localSuccess = true;
       Serial.println("System: ✅ Cross-node command Executed LOCALLY on " + targetHost);
     } else {
       Serial.println("Error: ⚠️ Cross-node mDNS failed (Code: " + String(httpResponseCode) + "). Trying cached IP...");
       
-      // FALLBACK: If router doesn't support mDNS, try cached IP
+      // FALLBACK: যদি কোনো রাউটার mDNS সাপোর্ট না করে, তবে অ্যাপের সেভ করা পুরোনো আইপিতে ট্রাই করবে
       if (targetIP != "") {
         http.end();
         String fallbackUrl = "http://" + targetIP + "/update";
@@ -903,7 +880,7 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
     http.end();
   }
 
-  // 3. FIREBASE FALLBACK (if Local mDNS and IP both fail)
+  // ৩. FIREBASE FALLBACK (যদি Local mDNS এবং IP দুটোই ফেইল করে)
   if (!localSuccess && isFirebaseConnected && targetNodeID != "") {
     Serial.println("System: ☁️ Local cross-node completely failed. Pushing to Firebase Cloud...");
     String targetFirebasePath = "/CypherNode/nodes/" + targetNodeID + "/states/" + loadID;
@@ -955,105 +932,30 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
  * @brief Updates device states based on received JSON.
  *        Body example: {"load1":1, "load2":0}
  */
-// void handleUpdateState() {
-//   if (!isAuthorizedAPI()) return server.send(401, "text/plain", "Unauthorized");
-
-//   String body = server.hasArg("plain") ? server.arg("plain") : (server.args() > 0 ? server.arg(0) : "");
-//   DynamicJsonDocument doc(512);
-//   DeserializationError err = deserializeJson(doc, body);
-//   if (err) return server.send(400, "text/plain", "Invalid JSON");
-
-//   JsonObject root = doc.as<JsonObject>();
-//   for (JsonPair kv : root) {
-//     String loadID = kv.key().c_str();
-//     int reqState = kv.value().as<int>();
-
-//     for (auto& dev : devices) {
-//       if (dev.loadID == loadID) {
-//         dev.state = (reqState == 1);
-//         applyHardwareState(dev);
-//         saveStatesToFile();
-//         updateFirebaseState(dev.loadID, dev.state);
-//         break;
-//       }
-//     }
-//   }
-//   handleGetState();  // return updated states
-// }
-
-/**
- * @brief Updates device states based on received JSON from App.
- */
 void handleUpdateState() {
-  Serial.println("\n========== [LOCAL HTTP CONTROL] ==========");
-  Serial.println("System: /update endpoint hit by App.");
+  if (!isAuthorizedAPI()) return server.send(401, "text/plain", "Unauthorized");
 
-  // 1. API Key verificaiton check
-  if (!isAuthorizedAPI()) {
-    Serial.println("Error: ❌ Unauthorized request! API Key mismatch.");
-    return server.send(401, "text/plain", "Unauthorized");
-  }
-  Serial.println("System: ✅ API Key verified.");
-  
-  // 2. Read body (For Application/JSON)
-  String body = "";
-  if (server.hasArg("plain")) {
-    body = server.arg("plain");
-  } else if (server.args() > 0) {
-    body = server.arg(0);
-  }
-  
-  Serial.println("Payload Received: " + body);
-
-  // 3. Check if body is empty
-  if (body == "") {
-     Serial.println("Error: ❌ Empty body received. App is not sending JSON properly.");
-     return server.send(400, "text/plain", "Empty Body");
-  }
-
-  // 4. JSON Parse Check
+  String body = server.arg("plain");
   DynamicJsonDocument doc(512);
   DeserializationError err = deserializeJson(doc, body);
-  if (err) {
-    Serial.println("Error: ❌ JSON Parse Failed: " + String(err.c_str()));
-    return server.send(400, "text/plain", "Invalid JSON");
-  }
+  if (err) return server.send(400, "text/plain", "Invalid JSON");
 
-  // 5. Find device and trigger relay
   JsonObject root = doc.as<JsonObject>();
-  bool deviceFound = false;
-
   for (JsonPair kv : root) {
     String loadID = kv.key().c_str();
     int reqState = kv.value().as<int>();
-    
-    Serial.println("Target Device: [" + loadID + "] -> Action: " + (reqState == 1 ? "ON" : "OFF"));
 
     for (auto& dev : devices) {
       if (dev.loadID == loadID) {
         dev.state = (reqState == 1);
-        applyHardwareState(dev); // Relay ON/OFF
-        // saveStatesToFile();
-        stateNeedsSave = true;
-        lastStateChangeTime = millis();
-        
-        if (isFirebaseConnected) {
-            updateFirebaseState(dev.loadID, dev.state);
-        }
-        deviceFound = true;
-        Serial.println("Success: ✅ Relay switched LOCALLY.");
+        applyHardwareState(dev);
+        saveStatesToFile();
+        updateFirebaseState(dev.loadID, dev.state);
         break;
       }
     }
   }
-  
-  if (!deviceFound) {
-     Serial.println("Warning: ⚠️ Device ID not found on this node.");
-     return server.send(404, "text/plain", "Device Not Found");
-  }
-
-  Serial.println("==========================================\n");
-  handleGetState(); // Response will be 200 OK and current status
+  handleGetState();  // return updated states
 }
 
 /**
@@ -1319,10 +1221,7 @@ void handlePhysicalSwitches() {
         if (dev.state != switchIsOn) {
           dev.state = switchIsOn;
           applyHardwareState(dev);
-          // saveStatesToFile();
-          // **DEBUG**
-          stateNeedsSave = true;
-          lastStateSaveTime = millis();
+          saveStatesToFile();
           updateFirebaseState(dev.loadID, dev.state);
         }
       }
@@ -1509,35 +1408,27 @@ void loop() {
     Serial.println("System: WiFi Connected Succesfully!");
     initCloudServices();
     connectionHandled = true;
-  } else if (currentState == WIFI_STATE_FAILED && !apModeStarted) {
+  } else if (currentState == WIFI_SCAN_FAILED && !apModeStarted) {
     Serial.println("System: WiFi Failed. Starting AP Mode portal....");
     wifiManager.startAPMode(server);
     apModeStarted = true;
   }
 
-  // ==========================================
-  // 1. HANDLE WEB SERVER CLIENTS (PRIORITY: FIRST!)
-  // ==========================================
-  // IMPORTANT: handleClient() must run BEFORE app.loop() and Database.loop().
-  // When internet is down, Firebase SDK internals can stall app.loop(), which
-  // would delay HTTP responses and cause Flutter's local /ping to timeout,
-  // incorrectly marking the node as offline even on a local-only network.
+  // Handle WebServer Clients (Only if AP or STA is running)
   if (connectionHandled || apModeStarted) {
     server.handleClient();
   }
 
   // ==========================================
-  // 2. NETWORK HEALING & FIREBASE LOOP
+  // 1. NETWORK HEALING (Non-Blocking)
   // ==========================================
   static bool wasWifiConnected = true;
   if (connectionHandled) {
     if (WiFi.status() != WL_CONNECTED) {
-      // WiFi physically lost (e.g. router power off)
       if (wasWifiConnected) {
         Serial.println("System: WiFi Connection Lost!");
         wasWifiConnected = false;
         isFirebaseConnected = false;
-        initialSyncDone = false; // Allow re-sync when WiFi restores
       }
       if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
         lastWifiRetryTime = currentMillis;
@@ -1545,24 +1436,24 @@ void loop() {
         WiFi.reconnect();
       }
     } else {
-      // WiFi is physically connected (local network OK, internet may or may not be available)
       if (!wasWifiConnected) {
         Serial.println("System: WiFi Restored!");
         wasWifiConnected = true;
         isFirebaseConnected = true;
       }
+      // Firebase loop
+      if (isFirebaseConnected) {
+        app.loop();
+        Database.loop();
 
-      // Always run Firebase SDK loops so it can self-recover when internet returns.
-      // These calls are non-blocking by design when internet is unavailable —
-      // the SDK queues retries internally without stalling the main loop.
-      app.loop();
-      Database.loop();
-
-      // Initial Firebase sync once auth is ready
-      if (isFirebaseConnected && app.ready() && !initialSyncDone) {
-        syncAllToFirebaseAtomic();
-        initialSyncDone = true;
-        Serial.println("System: Firebase Auth Ready. Initial Firebase Synced!");
+        // ====================================
+        // Initial Firebase Sync (Authentication ready check)
+        // ====================================
+        if (app.ready() && !initialSyncDone) {
+          syncAllToFirebaseAtomic();
+          initialSyncDone = true;
+          Serial.println("System: Firebase Auth Ready. Initial Firebase Synced!");
+        }
       }
     }
   }
@@ -1653,12 +1544,19 @@ void loop() {
         }
         // Case 2: Is the target device on another node? (Cross-Node Command)
         else {
+          // আপডেট: ফায়ারবেস ফলব্যাকের জন্য rule.targetNodeID প্যারামিটার হিসেবে পাস করা হলো
           sendLocalCrossNodeCommand(rule.targetNodeID, rule.targetIP, rule.loadID, rule.actionTurnOn ? 1 : 0);
           pushSystemLog("Remote Rule Executed: " + rule.id + " -> " + rule.targetNodeID);
         }
+
+        // // Case 2: Is the target device on another node? (Cross-Node Command)
+        // else {
+        //   sendLocalCrossNodeCommand(rule.targetIP, rule.loadID, rule.actionTurnOn ? 1 : 0);
+        //   pushSystemLog("Remote Rule Executed: " + rule.id + " -> " + rule.targetNodeID);
+        // }
       }
 
-      // Unlock automation (For Hysteresis)
+      // অটোমেশন আনলক করা (Hysteresis এর জন্য)
       if (resetLock) {
         rule.lastConditionMet = false;
       }
@@ -1675,21 +1573,17 @@ void loop() {
       DynamicJsonDocument doc(512);
 
       // --- UPDATED: Deep Path Update (No Nested Objects for Root) ---
+      // এর ফলে name এবং isSetup আর কখনো মুছবে না!
       doc["info/ip_address"] = WiFi.localIP().toString();
 
-      // for Firebase Server Timestamp
+      // Firebase Server Timestamp এর জন্য
       JsonObject pulseObj = doc.createNestedObject("health/lastPulse");
       pulseObj[".sv"] = "timestamp";
 
 #ifdef ENABLE_DHT
       // Deep Path for DHT
-      if (isnan(temp) || isnan(hum)) {
-        doc["sensors/dht/temp"] = nullptr;
-        doc["sensors/dht/humidity"] = nullptr;
-      } else {
-        doc["sensors/dht/temp"] = temp;
-        doc["sensors/dht/humidity"] = hum;
-      }
+      doc["sensors/dht/temp"] = temp;
+      doc["sensors/dht/humidity"] = hum;
 
       if (!isnan(temp)) {
         if (temp >= 40.0 && !highTempAlertSent) {
@@ -1718,19 +1612,14 @@ void loop() {
 
 #ifdef ENABLE_VAC
       // Deep Path for VAC
-      if (isnan(vol) || isnan(cur)) {
-        doc["sensors/vac/voltage"] = nullptr;
-        doc["sensors/vac/current"] = nullptr;
-      } else {
-        doc["sensors/vac/voltage"] = vol;
-        doc["sensors/vac/current"] = cur;
-      }
+      doc["sensors/vac/voltage"] = vol;
+      doc["sensors/vac/current"] = cur;
 #endif
 
       String payload;
       serializeJson(doc, payload);
 
-      Serial.println("Pulse Payload: " + payload); // for debug
+      // Serial.println("Pulse Payload: " + payload); // for debug
 
       Database.update<object_t>(aClientPush, nodeRootPath, object_t(payload), pushCallback, "sensorPulseTask");
     }
