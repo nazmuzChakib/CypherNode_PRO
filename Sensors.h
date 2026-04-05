@@ -25,6 +25,9 @@
 // ========================================
 // Sensor Initialization
 // ========================================
+/**
+ * @brief Initializes all enabled sensors (DHT11, INA219).
+ */
 void initSensors() {
     #ifdef ENABLE_DHT
         dht.begin();
@@ -43,6 +46,13 @@ void initSensors() {
 // =========================================
 // Read Sensor Data
 // =========================================
+/**
+ * @brief Reads data from all enabled sensors.
+ * @param temp Reference to store temperature (Celsius).
+ * @param hum  Reference to store humidity (%).
+ * @param vol  Reference to store bus voltage (V).
+ * @param cur  Reference to store current (A).
+ */
 void readSensorData(float &temp, float &hum, float &vol, float &cur) {
   // default value
   temp = 0.0; 
