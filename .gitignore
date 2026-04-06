@@ -17,6 +17,8 @@ build/
 
 # Hide Backup code from github
 backup/
+*.ino
+*.h
 
 # Python cache
 __pycache__/
