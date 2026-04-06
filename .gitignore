@@ -16,7 +16,7 @@ build/
 .vscode/
 
 # Hide Backup code from github
-backup/
+backups/
 *.ino
 *.h
 
