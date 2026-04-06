@@ -15,6 +15,9 @@ build/
 # VSCode local settings
 .vscode/
 
+# Hide Backup code from github
+backup/
+
 # Python cache
 __pycache__/
 *.pyc
