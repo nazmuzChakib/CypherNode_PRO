@@ -10,20 +10,20 @@ CypherNode is an advanced, highly secure, and highly optimized Smart Home Automa
 
 ## 🚀 Core Philosophy & Key Features
 
-*   **Cloud Command-Queue Architecture:** For cloud interactions, the mobile app pushes commands to a Firebase queue instead of directly altering states. The ESP32 node processes these commands atomically, applies changes, reports the true hardware state back, and then clears the queue (ACK). This guarantees data consistency and eliminates race conditions on unreliable networks.
+- **Cloud Command-Queue Architecture:** For cloud interactions, the mobile app pushes commands to a Firebase queue instead of directly altering states. The ESP32 node processes these commands atomically, applies changes, reports the true hardware state back, and then clears the queue (ACK). This guarantees data consistency and eliminates race conditions on unreliable networks.
 
-*   **Distributed Local Network:** Nodes form a local mesh network. The embedded web portal can link to other CypherNodes on the LAN, allowing for a unified dashboard and cross-node control without relying on the internet.
+- **Distributed Local Network:** Nodes form a local mesh network. The embedded web portal can link to other CypherNodes on the LAN, allowing for a unified dashboard and cross-node control without relying on the internet.
 
-*   **Intelligent On-Device Configuration:** The embedded web portal provides a rich UI for adding and managing loads. It includes client-side JavaScript validation to prevent GPIO pin collisions (e.g., using the same pin for a relay and a switch) before the configuration is ever sent to the ESP32, ensuring hardware safety.
+- **Intelligent On-Device Configuration:** The embedded web portal provides a rich UI for adding and managing loads. It includes client-side JavaScript validation to prevent GPIO pin collisions (e.g., using the same pin for a relay and a switch) before the configuration is ever sent to the ESP32, ensuring hardware safety.
 
-*   **Ghost-State Prevention:** A sophisticated non-blocking debounce algorithm for physical switches ensures instant state synchronization with the cloud. Cloud commands are cross-verified with the hardware's physical state to prevent "ghost overrides" where the app and the device are out of sync.
+- **Ghost-State Prevention:** A sophisticated non-blocking debounce algorithm for physical switches ensures instant state synchronization with the cloud. Cloud commands are cross-verified with the hardware's physical state to prevent "ghost overrides" where the app and the device are out of sync.
 
-*   **Failsafe Persistence:** Leverages the `LittleFS` file system on the ESP32's flash memory to store all device configurations and the last known states. The system automatically restores its full operational state after a power failure or reboot, even if there is no internet connection.
+- **Failsafe Persistence:** Leverages the `LittleFS` file system on the ESP32's flash memory to store all device configurations and the last known states. The system automatically restores its full operational state after a power failure or reboot, even if there is no internet connection.
 
-*   **Hyper-Optimized Embedded Web Portal:** A full-featured Single-Page Application (SPA) is served directly from the ESP32's flash memory.
-    *   **Build Pipeline:** A custom Python script (`html_to_header.py`) automatically minifies the HTML, CSS, and JavaScript, performs Gzip compression, and converts the entire web app into a C++ header file (`WebPage.h`).
-    *   **Performance:** This process results in a tiny memory footprint and lightning-fast page loads, serving a modern, responsive UI without external dependencies.
-    *   **Functionality:** The portal allows for direct device control, local load configuration, and linking/management of other nodes on the network.
+- **Hyper-Optimized Embedded Web Portal:** A full-featured Single-Page Application (SPA) is served directly from the ESP32's flash memory.
+  - **Build Pipeline:** A custom Python script (`html_to_header.py`) automatically minifies the HTML, CSS, and JavaScript, performs Gzip compression, and converts the entire web app into a C++ header file (`WebPage.h`).
+  - **Performance:** This process results in a tiny memory footprint and lightning-fast page loads, serving a modern, responsive UI without external dependencies.
+  - **Functionality:** The portal allows for direct device control, local load configuration, and linking/management of other nodes on the network.
 
 ---
 
@@ -57,8 +57,8 @@ CypherNode/
 - **Technology Stack:** A lightweight, dependency-free Single-Page Application (SPA) built with vanilla HTML5, CSS3, and JavaScript.
 - **UI/UX:** A modern, responsive interface designed for both desktop and mobile browsers, providing a seamless user experience for configuration and control.
 - **State Management:**
-    - **Runtime State:** JavaScript variables manage the current state of all local and remote devices for the dashboard.
-    - **Persistent State:** The browser's `localStorage` is used to remember the connection details (URL, API Key) for linked remote nodes, so they don't need to be re-added on each visit.
+  - **Runtime State:** JavaScript variables manage the current state of all local and remote devices for the dashboard.
+  - **Persistent State:** The browser's `localStorage` is used to remember the connection details (URL, API Key) for linked remote nodes, so they don't need to be re-added on each visit.
 - **API Communication:** Uses the standard `fetch` API to make asynchronous GET and POST requests to the ESP32's local REST endpoints.
 
 ### 2. Cloud Layer (Firebase)
@@ -113,7 +113,7 @@ CypherNode/
 
 1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/YourRepo/CypherNode.git
+    git clone https://github.com/nazmuzChakib/CypherNode_PRO.git
     ```
 2.  **Configuration:**
     - Rename `secrets.example.h` to `secrets.h`.
