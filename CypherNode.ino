@@ -711,8 +711,8 @@ bool isAuthorizedAPI() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, DELETE");
     server.sendHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key, Authorization");
-    server.send(204); // No Content response for preflight
-    return true;      // Let the options request pass without auth
+    server.send(204);  // No Content response for preflight
+    return true;       // Let the options request pass without auth
   }
 
   // 2. Add CORS headers to actual responses so browser can read them
@@ -769,7 +769,7 @@ void handleSaveConfig() {
   String payload = server.arg("plain");
 
   // check first if data is valid or not
-  DynamicJsonDocument testDoc;
+  DynamicJsonDocument testDoc(2048);
   DeserializationError err = deserializeJson(testDoc, payload);
   if (err) {
     return server.send(400, "text/plain", "Invalid JSON");
@@ -866,15 +866,15 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
   if (WiFi.status() == WL_CONNECTED && targetNodeID != "") {
     HTTPClient http;
     http.setTimeout(3000);
-    
+
     // Using mDNS local domain instead of IP
     String targetHost = "cypher-" + targetNodeID + ".local";
     String url = "http://" + targetHost + "/update";
-    
+
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("x-api-key", API_KEY); 
-    
+    http.addHeader("x-api-key", API_KEY);
+
     String jsonPayload = "{\"" + loadID + "\":" + String(state) + "}";
     int httpResponseCode = http.POST(jsonPayload);
 
@@ -884,7 +884,7 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
       Serial.println("System: ✅ Cross-node command Executed LOCALLY on " + targetHost);
     } else {
       Serial.println("Error: ⚠️ Cross-node mDNS failed (Code: " + String(httpResponseCode) + "). Trying cached IP...");
-      
+
       // FALLBACK: If router doesn't support mDNS, try cached IP
       if (targetIP != "") {
         http.end();
@@ -893,10 +893,10 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
         http.addHeader("Content-Type", "application/json");
         http.addHeader("x-api-key", API_KEY);
         int fallbackResponse = http.POST(jsonPayload);
-        
+
         if (fallbackResponse == 200) {
-           localSuccess = true;
-           Serial.println("System: ✅ Cross-node command Executed on Cached IP: " + targetIP);
+          localSuccess = true;
+          Serial.println("System: ✅ Cross-node command Executed on Cached IP: " + targetIP);
         }
       }
     }
@@ -912,76 +912,6 @@ void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String load
 }
 
 /**
- * @brief Sends command to another node locally. Falls back to Firebase if local ping fails.
- */
- /*
-void sendLocalCrossNodeCommand(String targetNodeID, String targetIP, String loadID, int state) {
-  bool localSuccess = false;
-
-  // ১. Local HTTP Request (if ip available and wifi connected)
-  if (WiFi.status() == WL_CONNECTED && targetIP != "") {
-    HTTPClient http;
-    http.setTimeout(2500);
-
-    String url = "http://" + targetIP + "/update";
-    http.begin(url);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("x-api-key", API_KEY);
-
-    String jsonPayload = "{\"" + loadID + "\":" + String(state) + "}";
-    int httpResponseCode = http.POST(jsonPayload);
-
-    if (httpResponseCode == 200) {
-      localSuccess = true;
-      Serial.println("System: ✅ Cross-node command sent LOCALLY to " + targetIP + " for " + loadID);
-    } else {
-      Serial.println("Error: ⚠️ Cross-node HTTP failed. HTTP Error: " + String(httpResponseCode));
-    }
-    http.end();
-  }
-
-  // 2. FIREBASE FALLBACK (if Local HTTP fails or IP is not available)
-  if (!localSuccess && isFirebaseConnected && targetNodeID != "") {
-    Serial.println("System: ☁️ Local cross-node failed. Falling back to Firebase Cloud...");
-
-    // Writing command directly to the target node's states folder in Firebase
-    String targetFirebasePath = "/CypherNode/nodes/" + targetNodeID + "/states/" + loadID;
-    Database.set<int>(aClientPush, targetFirebasePath, state, pushCallback, "crossNodeFallback");
-  }
-}
-  */
-
-/**
- * @brief Updates device states based on received JSON.
- *        Body example: {"load1":1, "load2":0}
- */
-// void handleUpdateState() {
-//   if (!isAuthorizedAPI()) return server.send(401, "text/plain", "Unauthorized");
-
-//   String body = server.hasArg("plain") ? server.arg("plain") : (server.args() > 0 ? server.arg(0) : "");
-//   DynamicJsonDocument doc(512);
-//   DeserializationError err = deserializeJson(doc, body);
-//   if (err) return server.send(400, "text/plain", "Invalid JSON");
-
-//   JsonObject root = doc.as<JsonObject>();
-//   for (JsonPair kv : root) {
-//     String loadID = kv.key().c_str();
-//     int reqState = kv.value().as<int>();
-
-//     for (auto& dev : devices) {
-//       if (dev.loadID == loadID) {
-//         dev.state = (reqState == 1);
-//         applyHardwareState(dev);
-//         saveStatesToFile();
-//         updateFirebaseState(dev.loadID, dev.state);
-//         break;
-//       }
-//     }
-//   }
-//   handleGetState();  // return updated states
-// }
-
-/**
  * @brief Updates device states based on received JSON from App.
  */
 void handleUpdateState() {
@@ -994,7 +924,7 @@ void handleUpdateState() {
     return server.send(401, "text/plain", "Unauthorized");
   }
   Serial.println("System: ✅ API Key verified.");
-  
+
   // 2. Read body (For Application/JSON)
   String body = "";
   if (server.hasArg("plain")) {
@@ -1002,13 +932,13 @@ void handleUpdateState() {
   } else if (server.args() > 0) {
     body = server.arg(0);
   }
-  
+
   Serial.println("Payload Received: " + body);
 
   // 3. Check if body is empty
   if (body == "") {
-     Serial.println("Error: ❌ Empty body received. App is not sending JSON properly.");
-     return server.send(400, "text/plain", "Empty Body");
+    Serial.println("Error: ❌ Empty body received. App is not sending JSON properly.");
+    return server.send(400, "text/plain", "Empty Body");
   }
 
   // 4. JSON Parse Check
@@ -1026,19 +956,19 @@ void handleUpdateState() {
   for (JsonPair kv : root) {
     String loadID = kv.key().c_str();
     int reqState = kv.value().as<int>();
-    
+
     Serial.println("Target Device: [" + loadID + "] -> Action: " + (reqState == 1 ? "ON" : "OFF"));
 
     for (auto& dev : devices) {
       if (dev.loadID == loadID) {
         dev.state = (reqState == 1);
-        applyHardwareState(dev); // Relay ON/OFF
+        applyHardwareState(dev);  // Relay ON/OFF
         // saveStatesToFile();
         stateNeedsSave = true;
-        lastStateChangeTime = millis();
-        
+        lastStateSaveTime = millis();
+
         if (isFirebaseConnected) {
-            updateFirebaseState(dev.loadID, dev.state);
+          updateFirebaseState(dev.loadID, dev.state);
         }
         deviceFound = true;
         Serial.println("Success: ✅ Relay switched LOCALLY.");
@@ -1046,14 +976,14 @@ void handleUpdateState() {
       }
     }
   }
-  
+
   if (!deviceFound) {
-     Serial.println("Warning: ⚠️ Device ID not found on this node.");
-     return server.send(404, "text/plain", "Device Not Found");
+    Serial.println("Warning: ⚠️ Device ID not found on this node.");
+    return server.send(404, "text/plain", "Device Not Found");
   }
 
   Serial.println("==========================================\n");
-  handleGetState(); // Response will be 200 OK and current status
+  handleGetState();  // Response will be 200 OK and current status
 }
 
 /**
@@ -1537,7 +1467,7 @@ void loop() {
         Serial.println("System: WiFi Connection Lost!");
         wasWifiConnected = false;
         isFirebaseConnected = false;
-        initialSyncDone = false; // Allow re-sync when WiFi restores
+        initialSyncDone = false;  // Allow re-sync when WiFi restores
       }
       if (currentMillis - lastWifiRetryTime > wifiRetryInterval) {
         lastWifiRetryTime = currentMillis;
@@ -1730,7 +1660,7 @@ void loop() {
       String payload;
       serializeJson(doc, payload);
 
-      Serial.println("Pulse Payload: " + payload); // for debug
+      Serial.println("Pulse Payload: " + payload);  // for debug
 
       Database.update<object_t>(aClientPush, nodeRootPath, object_t(payload), pushCallback, "sensorPulseTask");
     }

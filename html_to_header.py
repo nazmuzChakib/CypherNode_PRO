@@ -94,7 +94,7 @@ def compress_and_convert():
 #include <Arduino.h>
 
 // Original: {original_kb:.2f} KB | Minified: {minified_kb:.2f} KB | Gzipped: {compressed_kb:.2f} KB
-const uint8_t index_html_gz[] PROGMEM = {{
+const  uint8_t index_html_gz[] PROGMEM = {{
 {formatted_hex}
 }};
 
